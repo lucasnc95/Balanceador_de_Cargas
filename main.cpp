@@ -272,9 +272,8 @@ int main(int argc, char *argv[])
 						}
 	
 						kernelEventoDispositivo[count] = RunKernel(count-meusDispositivosOffset, kernelDispositivo[count], parametrosMalha[count][OFFSET_COMPUTACAO], parametrosMalha[count][LENGTH_COMPUTACAO], isDeviceCPU(count-meusDispositivosOffset) ? CPU_WORK_GROUP_SIZE :  GPU_WORK_GROUP_SIZE);
-
-						simulacao++;
 					}
+					simulacao++;
 				}
 
 				//Tempos.
