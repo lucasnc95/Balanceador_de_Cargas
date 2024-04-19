@@ -174,6 +174,7 @@ int main(int argc, char *argv[])
 	long int tempos[todosDispositivos];
 	float cargasNovas[todosDispositivos];
 	float cargasAntigas[todosDispositivos];
+
 	double tempoLocalWriteByte = 0;
 	double tempoGlobalWriteByte;
 
@@ -243,8 +244,11 @@ int main(int argc, char *argv[])
 	balanceamento = true;
 #endif
 
+	double tempoLocalLatencia = 0;
 	double tempoGlobalLatencia;
+	double tempoLocalBanda = 0;
 	double tempoGlobalBanda;
+	int recvNotification;
 
 	for (int simulacao = 0; simulacao < SIMULACOES; simulacao++)
 	{
@@ -305,10 +309,6 @@ int main(int argc, char *argv[])
 			memcpy(tempos, temposRoot, sizeof(long int) * todosDispositivos);
 			ComputarCargas(tempos, cargasAntigas, cargasNovas, todosDispositivos);
 
-			double tempoLocalLatencia = 0;
-			double tempoLocalBanda = 0;
-			int recvNotification;
-
 			// Computar novas cargas.
 			if (ComputarNorma(cargasAntigas, cargasNovas, todosDispositivos) > BALANCEAMENTO_THRESHOLD)
 			{
@@ -330,8 +330,10 @@ int main(int argc, char *argv[])
 									float *malha = ((simulacao % 2) == 0) ? malhaSwapBuffer[0] : malhaSwapBuffer[1];
 									int malhaDevice = ((simulacao % 2) == 0) ? malhaSwapBufferDispositivo[count][0] : malhaSwapBufferDispositivo[count][1];
 									MPI_Recv(overlap, 2, MPI_INT, alvo, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-									MPI_Send(&recvNotification, 1, MPI_INT, alvo, 0, MPI_COMM_WORLD);
-
+									if (simulacao < 2)
+									{
+										MPI_Send(&recvNotification, 1, MPI_INT, alvo, 0, MPI_COMM_WORLD);
+									}
 									// Podem ocorrer requisicoes vazias.
 									if (overlap[1] > 0)
 									{
@@ -339,10 +341,17 @@ int main(int argc, char *argv[])
 										SynchronizeCommandQueue(count - meusDispositivosOffset);
 
 										sizeCarga = overlap[1] * MALHA_TOTAL_CELULAS;
-										double tempoInicioBanda = MPI_Wtime();
-										MPI_Send(malha + (overlap[0] * MALHA_TOTAL_CELULAS), sizeCarga, MPI_FLOAT, alvo, 0, MPI_COMM_WORLD);
-										MPI_Recv(&recvNotification, 1, MPI_INT, alvo, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-										tempoLocalBanda = sizeCarga / (MPI_Wtime() - tempoInicioBanda);
+										if (simulacao < 2)
+										{
+											double tempoInicioBanda = MPI_Wtime();
+											MPI_Send(malha + (overlap[0] * MALHA_TOTAL_CELULAS), sizeCarga, MPI_FLOAT, alvo, 0, MPI_COMM_WORLD);
+											MPI_Recv(&recvNotification, 1, MPI_INT, alvo, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+											tempoLocalBanda = sizeCarga / (MPI_Wtime() - tempoInicioBanda);
+										}
+										else
+										{
+											MPI_Send(malha + (overlap[0] * MALHA_TOTAL_CELULAS), sizeCarga, MPI_FLOAT, alvo, 0, MPI_COMM_WORLD);
+										}
 									}
 								}
 							}
@@ -380,14 +389,22 @@ int main(int argc, char *argv[])
 											int alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, count2);
 											float *malha = ((simulacao % 2) == 0) ? malhaSwapBuffer[0] : malhaSwapBuffer[1];
 											int malhaDevice = ((simulacao % 2) == 0) ? malhaSwapBufferDispositivo[count][0] : malhaSwapBufferDispositivo[count][1];
-
-											double tempoInicioLatencia = MPI_Wtime();
-											MPI_Send(overlap, 2, MPI_INT, alvo, 0, MPI_COMM_WORLD);
-											MPI_Recv(&recvNotification, 1, MPI_INT, alvo, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-											tempoLocalLatencia = (MPI_Wtime() - tempoInicioLatencia) / 2;
-
+											if (simulacao < 2)
+											{
+												double tempoInicioLatencia = MPI_Wtime();
+												MPI_Send(overlap, 2, MPI_INT, alvo, 0, MPI_COMM_WORLD);
+												MPI_Recv(&recvNotification, 1, MPI_INT, alvo, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+												tempoLocalLatencia = (MPI_Wtime() - tempoInicioLatencia) / 2;
+											}
+											else
+											{
+												MPI_Send(overlap, 2, MPI_INT, alvo, 0, MPI_COMM_WORLD);
+											}
 											MPI_Recv(malha + (overlap[0] * MALHA_TOTAL_CELULAS), overlap[1] * MALHA_TOTAL_CELULAS, MPI_FLOAT, alvo, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-											MPI_Send(&recvNotification, 1, MPI_INT, alvo, 1, MPI_COMM_WORLD);
+											if (simulacao < 2)
+											{
+												MPI_Send(&recvNotification, 1, MPI_INT, alvo, 1, MPI_COMM_WORLD);
+											}
 
 											WriteToMemoryObject(count - meusDispositivosOffset, malhaDevice, (char *)(malha + (overlap[0] * MALHA_TOTAL_CELULAS)), overlap[0] * MALHA_TOTAL_CELULAS * sizeof(float), overlap[1] * MALHA_TOTAL_CELULAS * sizeof(float));
 											SynchronizeCommandQueue(count - meusDispositivosOffset);
