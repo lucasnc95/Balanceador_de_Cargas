@@ -1,0 +1,1 @@
+mpic++ -L/share/apps/amd-opencl/AMDAPPSDK-3.0/lib/x86_64/sdk -D MAX_NUMBER_OF_DEVICES_PER_PLATFORM=1 -D ALL_DEVICES -O3 -o HIS_Estatico_ALL Balanceador_lib.cpp OpenCLWrapper.cpp main.cpp -lOpenCL -lrt
