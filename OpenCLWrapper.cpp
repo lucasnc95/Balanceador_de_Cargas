@@ -3,7 +3,7 @@
 #include <mpi.h>
 
 #include "OpenCLWrapper.h"
-
+//#define MAX_NUMBER_OF_DEVICES_PER_PLATFORM 100
 #define MAX_SOURCE_BUFFER_LENGTH	1000000
 #define MAX_NUMBER_OF_PLATFORMS		10
 #define MAX_NUMBER_OF_DEVICES		10
