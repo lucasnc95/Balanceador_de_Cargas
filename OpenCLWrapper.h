@@ -26,6 +26,7 @@ void SynchronizeCommandQueue(int devicePosition);
 void SynchronizeEvent(int devicePosition, int eventPosition);
 long int GetEventTaskOverheadTicks(int devicePosition, int eventPosition);
 long int GetEventTaskTicks(int devicePosition, int eventPosition);
+int GetMaxFrequency(int devicePosition);
 
 cl_device_type GetDeviceType(int devicePosition);
 size_t GetDeviceMaxWorkItemsPerWorkGroup(int devicePosition);
