@@ -23,6 +23,8 @@ struct Device
 	cl_command_queue dataCommandQueue;
 	cl_program program;
 
+	cl_uint maxFrequency;
+
 	cl_mem *memoryObjects;
 	cl_kernel *kernels;
 
@@ -125,6 +127,7 @@ int InitParallelProcessor()
 			clGetDeviceInfo(devices[count].deviceID, CL_DEVICE_TYPE, sizeof(cl_device_type), &devices[count].deviceType, NULL);
 			clGetDeviceInfo(devices[count].deviceID, CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(cl_device_type), &devices[count].deviceMaxWorkItemsPerWorkGroup, NULL);
 			clGetDeviceInfo(devices[count].deviceID, CL_DEVICE_MAX_COMPUTE_UNITS, sizeof(cl_device_type), &devices[count].deviceComputeUnits, NULL);
+			clGetDeviceInfo(devices[count].deviceID, CL_DEVICE_MAX_CLOCK_FREQUENCY, sizeof(cl_uint), &devices[count].maxFrequency, NULL);
 
 			if (devices[count].maxFrequency > 10) // MHz
 			{
@@ -473,6 +476,11 @@ long int GetEventTaskTicks(int devicePosition, int eventPosition)
 	clGetEventProfilingInfo(devices[devicePosition].events[eventPosition], CL_PROFILING_COMMAND_START, sizeof(long int), &ticksStart, NULL);
 	clGetEventProfilingInfo(devices[devicePosition].events[eventPosition], CL_PROFILING_COMMAND_END, sizeof(long int), &ticksEnd, NULL);
 	return (ticksEnd - ticksStart);
+}
+
+int GetMaxFrquency(int devicePosition)
+{
+	return devices[devicePosition].maxFrequency;
 }
 
 cl_device_type GetDeviceType(int devicePosition)
