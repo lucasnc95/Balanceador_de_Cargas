@@ -38,7 +38,6 @@ private:
   float *cargasAntigas; //[todosDispositivos]
   double writeByte;
   double fatorErro;
-  double tempoComputacaoBalanceada;
   int *parametrosMalhaDispositivo;    //[todosDispositivos]
   float **malhaSwapBufferDispositivo; //[todosDispositivos][2]
   int *kernelDispositivo;             //[todosDispositivos]

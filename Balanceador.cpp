@@ -303,12 +303,12 @@ void Balanceador::PrecisaoBalanceamento(int &simulacao)
 	}
 
 	// Reduzir ticks.
-	long int global_ticks[todosDispositivos];
-	MPI_Allreduce(ticks, global_ticks, todosDispositivos, MPI_LONG, MPI_SUM, MPI_COMM_WORLD);
-	memcpy(ticks, global_ticks, sizeof(long int) * todosDispositivos);
+	long int ticks_root[todosDispositivos];
+	MPI_Allreduce(ticks, ticks_root, todosDispositivos, MPI_LONG, MPI_SUM, MPI_COMM_WORLD);
+	memcpy(ticks, ticks_root, sizeof(long int) * todosDispositivos);
 	ComputarCargas(ticks, cargasAntigas, cargasNovas, todosDispositivos);
 
-	long int global_tempos[todosDispositivos];
+	long int tempos_root[todosDispositivos];
 	for (int count = 0; count < todosDispositivos; count++)
 	{
 		if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength)
@@ -316,8 +316,8 @@ void Balanceador::PrecisaoBalanceamento(int &simulacao)
 			tempos[count] = ticks[count] / (frequencias[count] * PRECISAO_BALANCEAMENTO)
 		}
 	}
-	MPI_Allreduce(tempos, global_tempos, todosDispositivos, MPI_LONG, MPI_SUM, MPI_COMM_WORLD);
-	memcpy(tempos, global_tempos, sizeof(long int) * todosDispositivos);
+	MPI_Allreduce(tempos, tempos_root, todosDispositivos, MPI_LONG, MPI_SUM, MPI_COMM_WORLD);
+	memcpy(tempos, tempos_root, sizeof(long int) * todosDispositivos);
 }
 
 void Balanceador::BalanceamentoDeCarga(int simulacao)
@@ -327,6 +327,8 @@ void Balanceador::BalanceamentoDeCarga(int simulacao)
 	PrecisaoBalanceamento(simulacao);
 
 	// Computar novas cargas.
+	double tempoComputacaoBalanceada = 0;
+
 	if (latencia + ComputarNorma(cargasAntigas, cargasNovas, todosDispositivos) * (writeByte + banda) + tempoComputacaoBalanceada < tempoComputacaoInterna)
 	{
 		for (int count = 0; count < todosDispositivos; count++)
