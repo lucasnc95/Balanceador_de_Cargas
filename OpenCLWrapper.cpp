@@ -7,7 +7,7 @@
 #define MAX_SOURCE_BUFFER_LENGTH 1000000
 #define MAX_NUMBER_OF_PLATFORMS 10
 #define MAX_NUMBER_OF_DEVICES 10
-
+#define MAX_NUMBER_OF_DEVICES_PER_PLATFORM 10
 #define MAX_MEMORY_OBJECTS 100
 #define MAX_KERNELS 100
 #define MAX_EVENTS 1000
@@ -80,7 +80,7 @@ int GetKernelPosition(int devicePosition, int kernelID)
 int InitParallelProcessor()
 {
 	cl_int state;
-
+	
 	// Get platforms.
 	cl_uint numberOfPlatforms = 0;
 	state = clGetPlatformIDs(MAX_NUMBER_OF_PLATFORMS, platformIDs, &numberOfPlatforms);
@@ -96,6 +96,7 @@ int InitParallelProcessor()
 	for (int platform = 0; platform < numberOfPlatforms; platform++)
 	{
 		// Get devices.
+		
 		cl_uint numberOfDevicesOfPlatform;
 #if defined(ALL_DEVICES)
 		state = clGetDeviceIDs(platformIDs[platform], CL_DEVICE_TYPE_ALL, MAX_NUMBER_OF_DEVICES_PER_PLATFORM, deviceList + numberOfDevices, &numberOfDevicesOfPlatform);
@@ -121,6 +122,7 @@ int InitParallelProcessor()
 		for (int count = numberOfDevices; count < numberOfDevices + numberOfDevicesOfPlatform; count++)
 		{
 			// Get ID.
+			
 			devices[count].deviceID = deviceList[count];
 
 			// Get type.
@@ -128,13 +130,13 @@ int InitParallelProcessor()
 			clGetDeviceInfo(devices[count].deviceID, CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(cl_device_type), &devices[count].deviceMaxWorkItemsPerWorkGroup, NULL);
 			clGetDeviceInfo(devices[count].deviceID, CL_DEVICE_MAX_COMPUTE_UNITS, sizeof(cl_device_type), &devices[count].deviceComputeUnits, NULL);
 			clGetDeviceInfo(devices[count].deviceID, CL_DEVICE_MAX_CLOCK_FREQUENCY, sizeof(cl_uint), &devices[count].maxFrequency, NULL);
-
+			
 			if (devices[count].maxFrequency > 10) // MHz
 			{
 				devices[count].maxFrequency *= 1000000;
 			}
 			else // GHz
-			{
+			{	
 				devices[count].maxFrequency *= 1000000000;
 			}
 
@@ -169,6 +171,7 @@ int InitParallelProcessor()
 			}
 
 			// Initialize memory objects, kernel and events.
+			
 			devices[count].numberOfMemoryObjects = 0;
 			devices[count].numberOfKernels = 0;
 			devices[count].numberOfEvents = 0;
@@ -190,6 +193,7 @@ int InitParallelProcessor()
 		}
 		numberOfDevices += numberOfDevicesOfPlatform;
 	}
+	
 	return numberOfDevices;
 }
 
