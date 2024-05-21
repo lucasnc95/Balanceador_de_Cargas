@@ -44,6 +44,7 @@ private:
   double writeByte;
   double fatorErro;
   size_t Element_size;
+  size_t DataToKernel_Size;
   long int N_Elements;
   int *DataToKernelDispositivo;    
   int **SwapBufferDispositivo; 
@@ -75,7 +76,7 @@ private:
   float ComputarNorma(const float *cargasAntigas, const float *cargaNovas, int participantes);
   void InicializarParametrosMalha(int **parametrosMalha, unsigned int offsetComputacao, unsigned int lengthComputacao, unsigned int xMalhaLength, unsigned int yMalhaLength, unsigned int zMalhaLength);
   void LerPontos(const double *malha, const int *parametrosMalha);
-  void InicializaDispositivos();
+  void InicializaDispositivos(int meusDispositivosOffset, int meusDispositivosLenght, int offsetComputacao, int lengthComputacao);
   void DistribuicaoUniformeDeCarga();
   void BalanceamentoDeCarga(int simulacao);
   void ComputaKernel(int simulacao);

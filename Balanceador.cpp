@@ -14,7 +14,7 @@ Balanceador::Balanceador(int argc, char *argv[],void *data, const size_t Element
 	
 	
 	MPI_Init(&argc, &argv);
-
+	
 	HABILITAR_BENCHMARK = false;
 	HABILITAR_ESTATICO = true;
 	HABILITAR_DINAMICO = false;
@@ -25,6 +25,7 @@ Balanceador::Balanceador(int argc, char *argv[],void *data, const size_t Element
 	
 	Element_size = Element_sz;
 	N_Elements = N_Element;
+	DataToKernel_Size = div_size;
 	
 	MPI_Comm_size(MPI_COMM_WORLD, &world_size);
 	MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
@@ -64,10 +65,10 @@ Balanceador::Balanceador(int argc, char *argv[],void *data, const size_t Element
 
 	SwapBuffer = new void*[2];
 	
-            SwapBuffer[0] = malloc(Element_sz * N_Element);
-            memcpy(SwapBuffer[0], data, Element_sz * N_Element);
-			SwapBuffer[1] = malloc(Element_sz * N_Element);
-            memcpy(SwapBuffer[1], data, Element_sz * N_Element);
+   	SwapBuffer[0] = malloc(Element_sz * N_Element);
+   	memcpy(SwapBuffer[0], data, Element_sz * N_Element);
+	SwapBuffer[1] = malloc(Element_sz * N_Element);
+	memcpy(SwapBuffer[1], data, Element_sz * N_Element);
         
 	
 
@@ -78,9 +79,10 @@ Balanceador::Balanceador(int argc, char *argv[],void *data, const size_t Element
 	cargasAntigas = new float[todosDispositivos];
 	double LocalWriteByte = 0;
 	DataToKernelDispositivo = new int [todosDispositivos];
-	*SwapBufferDispositivo = new int[todosDispositivos];
-	SwapBufferDispositivo[0] = new int;
-	SwapBufferDispositivo[1] = new int;
+	SwapBufferDispositivo = new int*[todosDispositivos];
+		for (int i = 0; i < todosDispositivos; ++i) {
+    		SwapBufferDispositivo[i] = new int[2];
+													}
 	kernelDispositivo = new int[todosDispositivos];
 	dataEventoDispositivo = new int[todosDispositivos];
 	kernelEventoDispositivo = new int [todosDispositivos];
@@ -90,7 +92,7 @@ Balanceador::Balanceador(int argc, char *argv[],void *data, const size_t Element
 	offsetComputacao = 0;
 	lengthComputacao = (N_Elements) / todosDispositivos;
 	
-	InicializaDispositivos();
+	InicializaDispositivos(meusDispositivosOffset, meusDispositivosLength, offsetComputacao, lengthComputacao);
 	
 	DistribuicaoUniformeDeCarga();
 	
@@ -201,9 +203,11 @@ void Balanceador::InicializarLenghtOffset(unsigned int offsetComputacao, unsigne
 
 
 // Função de inicialização em todos os dispositivos
-void Balanceador::InicializaDispositivos()
+void Balanceador::InicializaDispositivos(int meusDispositivosOffset, int meusDispositivosLenght, int offsetComputacao, int lengthComputacao)
 {
 	
+	double LocalWriteByte = 0;
+
 	
 	
 	for (int count = 0; count < todosDispositivos; count++)
@@ -211,17 +215,19 @@ void Balanceador::InicializaDispositivos()
 		if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength)
 		{
 			InicializarLenghtOffset(offsetComputacao, (count + 1 == todosDispositivos) ? (N_Elements) - offsetComputacao : lengthComputacao, count);
-			DataToKernelDispositivo[count] = CreateMemoryObject(count - meusDispositivosOffset, sizeof(DataToKernel), CL_MEM_READ_ONLY, NULL);
-			SwapBufferDispositivo[count][0] = CreateMemoryObject(count - meusDispositivosOffset, sizeof(Element_size) * N_Elements, CL_MEM_READ_WRITE, NULL);
-			SwapBufferDispositivo[count][1] = CreateMemoryObject(count - meusDispositivosOffset, sizeof(Element_size) * N_Elements, CL_MEM_READ_WRITE, NULL);		
-			WriteToMemoryObject(count - meusDispositivosOffset, DataToKernelDispositivo[count], (char *)DataToKernel, 0, sizeof(DataToKernel) );			
-			sizeCarga = sizeof(Element_size) * N_Elements;
+			DataToKernelDispositivo[count] = CreateMemoryObject(count - meusDispositivosOffset, DataToKernel_Size, CL_MEM_READ_ONLY, NULL);
+			cout<<"N_Elements: "<<N_Elements<<" Element_size: "<<Element_size<<" DatatoKernel size: "<<DataToKernel_Size<<endl;
+			SwapBufferDispositivo[count][0] = CreateMemoryObject(count - meusDispositivosOffset, Element_size * N_Elements, CL_MEM_READ_WRITE, NULL);
+			SwapBufferDispositivo[count][1] = CreateMemoryObject(count - meusDispositivosOffset, Element_size * N_Elements, CL_MEM_READ_WRITE, NULL);
+			WriteToMemoryObject(count - meusDispositivosOffset, DataToKernelDispositivo[count], (char *)DataToKernel, 0, DataToKernel_Size );
+			sizeCarga = Element_size * N_Elements;
 			tempoInicio = MPI_Wtime();
 			WriteToMemoryObject(count - meusDispositivosOffset, SwapBufferDispositivo[count][0], (char *)SwapBuffer[0], 0, sizeCarga);
 			WriteToMemoryObject(count - meusDispositivosOffset, SwapBufferDispositivo[count][1], (char *)SwapBuffer[1], 0, sizeCarga);
-			double LocalWriteByte = (MPI_Wtime - tempoInicio) / sizeCarga / 2;
+			LocalWriteByte = (MPI_Wtime() - tempoInicio) / sizeCarga / 2;
+			cout<<"Local Writebyte: "<<LocalWriteByte<<endl;
 			SynchronizeCommandQueue(count - meusDispositivosOffset);
-			MPI_Allreduce(&LocalWriteByte, &writeByte, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+			
 			kernelDispositivo[count] = CreateKernel(count - meusDispositivosOffset, "kernels.cl", "ProcessarPontos");
 			SetKernelAttribute(count - meusDispositivosOffset, kernelDispositivo[count], 0, SwapBufferDispositivo[count][0]);
 			SetKernelAttribute(count - meusDispositivosOffset, kernelDispositivo[count], 1, SwapBufferDispositivo[count][1]);
@@ -231,9 +237,10 @@ void Balanceador::InicializaDispositivos()
 		offsetComputacao += lengthComputacao;
 		
 	}
-	
+	MPI_Allreduce(&LocalWriteByte, &writeByte, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+	cout<<"Writebyte: "<<writeByte<<endl;
 }
-
+/*
 void Balanceador::PrecisaoBalanceamento(int &simulacao)
 {
 	// Precisao do balanceamento.
