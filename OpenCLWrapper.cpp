@@ -482,7 +482,7 @@ long int GetEventTaskTicks(int devicePosition, int eventPosition)
 	return (ticksEnd - ticksStart);
 }
 
-int GetMaxFrquency(int devicePosition)
+cl_uint GetMaxFrequency(int devicePosition)
 {
 	return devices[devicePosition].maxFrequency;
 }

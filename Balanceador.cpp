@@ -21,7 +21,7 @@ Balanceador::Balanceador(int argc, char *argv[],void *data, const size_t Element
 
 	CPU_WORK_GROUP_SIZE = 8;
 	GPU_WORK_GROUP_SIZE = 64;
-	
+	PRECISAO_BALANCEAMENTO = 10;
 	
 	Element_size = Element_sz;
 	N_Elements = N_Element;
@@ -62,7 +62,7 @@ Balanceador::Balanceador(int argc, char *argv[],void *data, const size_t Element
     memcpy(Data, data, Element_sz * N_Element);
 	int* intData = reinterpret_cast<int*>(Data);
 
-
+	cout<<"Disp offset = "<<meusDispositivosOffset<<endl;
 	SwapBuffer = new void*[2];
 	
    	SwapBuffer[0] = malloc(Element_sz * N_Element);
@@ -70,14 +70,11 @@ Balanceador::Balanceador(int argc, char *argv[],void *data, const size_t Element
 	SwapBuffer[1] = malloc(Element_sz * N_Element);
 	memcpy(SwapBuffer[1], data, Element_sz * N_Element);
         
-	
-
-
-	
+	ticks = new long int[todosDispositivos];
 	tempos = new double[todosDispositivos];
 	cargasNovas = new float[todosDispositivos];
 	cargasAntigas = new float[todosDispositivos];
-	double LocalWriteByte = 0;
+	double localWriteByte = 0;
 	DataToKernelDispositivo = new int [todosDispositivos];
 	SwapBufferDispositivo = new int*[todosDispositivos];
 		for (int i = 0; i < todosDispositivos; ++i) {
@@ -95,6 +92,12 @@ Balanceador::Balanceador(int argc, char *argv[],void *data, const size_t Element
 	InicializaDispositivos(meusDispositivosOffset, meusDispositivosLength, offsetComputacao, lengthComputacao);
 	
 	DistribuicaoUniformeDeCarga();
+	cout<<"Balanceamento 1"<<endl;
+	//PrecisaoBalanceamento(0);
+	cout<<"Balanceamento 2"<<endl;
+	PrecisaoBalanceamento(1);
+
+
 	
 }
 
@@ -205,15 +208,14 @@ void Balanceador::InicializarLenghtOffset(unsigned int offsetComputacao, unsigne
 // Função de inicialização em todos os dispositivos
 void Balanceador::InicializaDispositivos(int meusDispositivosOffset, int meusDispositivosLenght, int offsetComputacao, int lengthComputacao)
 {
-	
-	double LocalWriteByte = 0;
+	double localWriteByte = 0;
 
-	
-	
 	for (int count = 0; count < todosDispositivos; count++)
 	{
 		if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength)
-		{
+		{	
+
+			cout<<"Disp offset = "<<meusDispositivosOffset<<endl;
 			InicializarLenghtOffset(offsetComputacao, (count + 1 == todosDispositivos) ? (N_Elements) - offsetComputacao : lengthComputacao, count);
 			DataToKernelDispositivo[count] = CreateMemoryObject(count - meusDispositivosOffset, DataToKernel_Size, CL_MEM_READ_ONLY, NULL);
 			cout<<"N_Elements: "<<N_Elements<<" Element_size: "<<Element_size<<" DatatoKernel size: "<<DataToKernel_Size<<endl;
@@ -224,8 +226,9 @@ void Balanceador::InicializaDispositivos(int meusDispositivosOffset, int meusDis
 			tempoInicio = MPI_Wtime();
 			WriteToMemoryObject(count - meusDispositivosOffset, SwapBufferDispositivo[count][0], (char *)SwapBuffer[0], 0, sizeCarga);
 			WriteToMemoryObject(count - meusDispositivosOffset, SwapBufferDispositivo[count][1], (char *)SwapBuffer[1], 0, sizeCarga);
-			LocalWriteByte = (MPI_Wtime() - tempoInicio) / sizeCarga / 2;
-			cout<<"Local Writebyte: "<<LocalWriteByte<<endl;
+			double aux = (MPI_Wtime() - tempoInicio) / sizeCarga / 2;
+			localWriteByte = aux > localWriteByte ? aux : localWriteByte;
+			cout<<"Local Writebyte: "<< localWriteByte <<endl;
 			SynchronizeCommandQueue(count - meusDispositivosOffset);
 			
 			kernelDispositivo[count] = CreateKernel(count - meusDispositivosOffset, "kernels.cl", "ProcessarPontos");
@@ -237,73 +240,81 @@ void Balanceador::InicializaDispositivos(int meusDispositivosOffset, int meusDis
 		offsetComputacao += lengthComputacao;
 		
 	}
-	MPI_Allreduce(&LocalWriteByte, &writeByte, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+	MPI_Allreduce(&localWriteByte, &writeByte, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
 	cout<<"Writebyte: "<<writeByte<<endl;
 }
-/*
-void Balanceador::PrecisaoBalanceamento(int &simulacao)
+
+void Balanceador::PrecisaoBalanceamento(int simulacao)
 {
 	// Precisao do balanceamento.
+	
 	memset(ticks, 0, sizeof(long int) * todosDispositivos);
 	memset(tempos, 0, sizeof(double) * todosDispositivos);
-	for (int precisao = 0; precisao < PRECISAO_BALANCEAMENTO; precisao++)
-	{
-		// Computação.
-		if ((simulacao % 2) == 0)
-		{
-			for (int count = 0; count < todosDispositivos; count++)
-			{
-				if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength)
-				{
-					SetKernelAttribute(count - meusDispositivosOffset, kernelDispositivo[count], 0, SwapBufferDispositivo[count][0]);
-					SetKernelAttribute(count - meusDispositivosOffset, kernelDispositivo[count], 1, SwapBufferDispositivo[count][1]);
-				}
-			}
-		}
-		else
-		{
-			for (int count = 0; count < todosDispositivos; count++)
-			{
-				if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength)
-				{
-					SetKernelAttribute(count - meusDispositivosOffset, kernelDispositivo[count], 0, SwapBufferDispositivo[count][1]);
-					SetKernelAttribute(count - meusDispositivosOffset, kernelDispositivo[count], 1, SwapBufferDispositivo[count][0]);
+
+		for(int precisao = 0; precisao < PRECISAO_BALANCEAMENTO; precisao++)
+			{	cout<<"Precisão: "<<precisao<<endl;
+				//Computação.
+				for(int count = 0; count < todosDispositivos; count++)
+				{	cout<<"Count: "<<count<<endl;
+					if(count >= meusDispositivosOffset && count < meusDispositivosOffset+meusDispositivosLength)
+					{
+						if((simulacao%2)==0)
+						{ cout<<"If "<<count<<endl;
+							SetKernelAttribute(count-meusDispositivosOffset, kernelDispositivo[count], 0, SwapBufferDispositivo[count][0]);
+							SetKernelAttribute(count-meusDispositivosOffset, kernelDispositivo[count], 1, SwapBufferDispositivo[count][1]);
+						}
+						else
+						{ cout<<"else "<<count<<endl;
+							SetKernelAttribute(count-meusDispositivosOffset, kernelDispositivo[count], 0, SwapBufferDispositivo[count][1]);
+							SetKernelAttribute(count-meusDispositivosOffset, kernelDispositivo[count], 1, SwapBufferDispositivo[count][0]);
+						}
+	
+						kernelEventoDispositivo[count] = RunKernel(count-meusDispositivosOffset, kernelDispositivo[count], OFFSET_COMPUTACAO[count], LENGTH_COMPUTACAO[count], isDeviceCPU(count-meusDispositivosOffset) ? CPU_WORK_GROUP_SIZE :  GPU_WORK_GROUP_SIZE);
+					}
 				}
 
-				kernelEventoDispositivo[count] = RunKernel(count - meusDispositivosOffset, kernelDispositivo[count],OFFSET_COMPUTACAO[count],LENGTH_COMPUTACAO[count], isDeviceCPU(count - meusDispositivosOffset) ? CPU_WORK_GROUP_SIZE : GPU_WORK_GROUP_SIZE);
-			}
-		}
 
-		// Ticks.
-		for (int count = 0; count < todosDispositivos; count++)
-		{
-			if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength)
-			{
-				SynchronizeCommandQueue(count - meusDispositivosOffset);
-				ticks[count] += GetEventTaskTicks(count - meusDispositivosOffset, kernelEventoDispositivo[count]);
-			}
-		}
-	}
+
+
+				}
+
+
+
+		// cout<<"Ticks"<<endl;
+		// // // Ticks.
+		// for (int count = 0; count < todosDispositivos; count++)
+		// {	cout<<count<<endl;
+		// 	if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength)
+		// 	{	cout<<"if"<<endl;
+		// 		SynchronizeCommandQueue(count - meusDispositivosOffset);
+		// 		cout<<"offset disp = "<<meusDispositivosOffset<<endl;
+		// 		ticks[count] += GetEventTaskTicks(count - meusDispositivosOffset, kernelEventoDispositivo[count]);
+		// 		cout<<"tick"<<endl;
+		// 	}
+		// }
+	
 
 	// Reduzir ticks.
-	long int ticks_root[todosDispositivos];
-	MPI_Allreduce(ticks, ticks_root, todosDispositivos, MPI_LONG, MPI_SUM, MPI_COMM_WORLD);
-	memcpy(ticks, ticks_root, sizeof(long int) * todosDispositivos);
-	ComputarCargas(ticks, cargasAntigas, cargasNovas, todosDispositivos);
-
-	for (int count = 0; count < todosDispositivos; count++)
-	{
-		if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength)
-		{
-			SynchronizeCommandQueue(count - meusDispositivosOffset);
-			tempos[count] = ticks[count] / (frequencias[count] * PRECISAO_BALANCEAMENTO) / cargasNovas[count];
-		}
-	}
-	double tempos_root[todosDispositivos];
-	MPI_Allreduce(tempos, tempos_root, todosDispositivos, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-	memcpy(tempos, tempos_root, sizeof(double) * todosDispositivos);
+	cout<<"redução Ticks"<<endl;
+	//long int ticks_root[todosDispositivos];
+	// MPI_Allreduce(ticks, ticks_root, todosDispositivos, MPI_LONG, MPI_SUM, MPI_COMM_WORLD);
+	// memcpy(ticks, ticks_root, sizeof(long int) * todosDispositivos);
+	// ComputarCargas(ticks, cargasAntigas, cargasNovas, todosDispositivos);
+	// cout<<"getFrequency"<<endl;
+	// for (int count = 0; count < todosDispositivos; count++)
+	// {	
+	// 	if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength)
+	// 	{
+	// 		SynchronizeCommandQueue(count - meusDispositivosOffset);
+	// 		tempos[count] = ticks[count] / (GetMaxFrequency(count) * PRECISAO_BALANCEAMENTO) / cargasNovas[count];
+	// 	}
+	// }
+	// cout<<"reduce freq"<<endl;
+	// double tempos_root[todosDispositivos];
+	// MPI_Allreduce(tempos, tempos_root, todosDispositivos, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+	// memcpy(tempos, tempos_root, sizeof(double) * todosDispositivos);
 }
-
+/*
 void Balanceador::BalanceamentoDeCarga(int simulacao)
 {
 	double tempoInicioBalanceamento = MPI_Wtime();
@@ -317,7 +328,7 @@ void Balanceador::BalanceamentoDeCarga(int simulacao)
 		if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength)
 		{
 			SynchronizeCommandQueue(count - meusDispositivosOffset);
-			LocalTempoCB = cargasNovas[count] * tempos[count];
+			localTempoCB = cargasNovas[count] * tempos[count];
 		}
 	}
 	MPI_Allreduce(tempoCB, localTempoCB, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
@@ -433,7 +444,7 @@ void Balanceador::Probing(int simulacao)
 	// if (balanceamento && ((simulacao == 0) || (simulacao == 1) ))
 
 	double tempoInicioProbing = MPI_Wtime();
-	double LocalLatencia, LocalBanda;
+	double localLatencia = 0, localBanda = 0;
 	PrecisaoBalanceamento(simulacao);
 
 	// Computar novas cargas.
@@ -466,7 +477,8 @@ void Balanceador::Probing(int simulacao)
 
 							double tempoInicioBanda = MPI_Wtime();
 							MPI_Ssend(malha + (overlap[0] * MALHA_TOTAL_CELULAS), sizeCarga, MPI_FLOAT, alvo, 0, MPI_COMM_WORLD);
-							LocalBanda = (MPI_Wtime() - tempoInicioBanda) / sizeCarga;
+							double aux = (MPI_Wtime() - tempoInicioBanda) / sizeCarga;
+							localBanda = aux > localBanda ? aux : localBanda;
 						}
 					}
 				}
@@ -507,7 +519,8 @@ void Balanceador::Probing(int simulacao)
 
 								double tempoInicioLatencia = MPI_Wtime();
 								MPI_Ssend(overlap, 2, MPI_INT, alvo, 0, MPI_COMM_WORLD);
-								LocalLatencia = (MPI_Wtime() - tempoInicioLatencia) / 2;
+								double aux = (MPI_Wtime() - tempoInicioLatencia) / 2;
+								localLatencia = aux > localLatencia ? aux : localLatencia;
 
 								MPI_Recv(malha + (overlap[0] * MALHA_TOTAL_CELULAS), overlap[1] * MALHA_TOTAL_CELULAS, MPI_FLOAT, alvo, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
@@ -539,8 +552,8 @@ void Balanceador::Probing(int simulacao)
 	}
 	memcpy(cargasAntigas, cargasNovas, sizeof(float) * todosDispositivos);
 
-	MPI_Allreduce(&LocalLatencia, &latencia, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
-	MPI_Allreduce(&LocalBanda, &banda, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+	MPI_Allreduce(&localLatencia, &latencia, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+	MPI_Allreduce(&localBanda, &banda, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
 
 	MPI_Barrier(MPI_COMM_WORLD);
 	double tempoFimProbing = MPI_Wtime();

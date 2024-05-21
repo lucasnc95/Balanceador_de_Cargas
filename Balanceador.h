@@ -81,7 +81,7 @@ private:
   void BalanceamentoDeCarga(int simulacao);
   void ComputaKernel(int simulacao);
   void Probing(int simulacao);
-  void PrecisaoBalanceamento(int &simulacao);
+  void PrecisaoBalanceamento(int simulacao);
   void ExecutarBalanceamento();
   void InicializarLenghtOffset(unsigned int offsetComputacao, unsigned int lengthComputacao, int count);
 
