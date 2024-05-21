@@ -313,7 +313,7 @@ void Balanceador::PrecisaoBalanceamento(int &simulacao)
 	{
 		if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength)
 		{
-			tempos[count] = ticks[count] / (frequencias[count] * PRECISAO_BALANCEAMENTO)
+			tempos[count] = ticks[count] / (frequencias[count] * PRECISAO_BALANCEAMENTO) / cargasNovas[count];
 		}
 	}
 	MPI_Allreduce(tempos, tempos_root, todosDispositivos, MPI_LONG, MPI_SUM, MPI_COMM_WORLD);
@@ -327,7 +327,16 @@ void Balanceador::BalanceamentoDeCarga(int simulacao)
 	PrecisaoBalanceamento(simulacao);
 
 	// Computar novas cargas.
-	double tempoComputacaoBalanceada = 0;
+	double tempoComputacaoBalanceada = cargasNovas[0] * tempos[0];
+	for (int count = 1; count < todosDispositivos; count++)
+	{
+		double aux = cargasNovas[count] * tempos[count];
+		if (aux > tempoComputacaoBalanceada)
+		{
+			tempoComputacaoBalanceada = aux;
+		}
+	}
+	tempoComputacaoBalanceada *= xMalhaLength * yMalhaLength * zMalhaLength;
 
 	if (latencia + ComputarNorma(cargasAntigas, cargasNovas, todosDispositivos) * (writeByte + banda) + tempoComputacaoBalanceada < tempoComputacaoInterna)
 	{
@@ -557,6 +566,8 @@ void Balanceador::Probing(int simulacao)
 void Balanceador::ComputaKernel(int simulacao)
 {
 
+	double tempoInicio = MPI_Wtime();
+
 	// Computação interna.
 	for (int count = 0; count < todosDispositivos; count++)
 	{
@@ -574,6 +585,9 @@ void Balanceador::ComputaKernel(int simulacao)
 			SynchronizeCommandQueue(count - meusDispositivosOffset);
 		}
 	}
+
+	MPI_Barrier(MPI_COMM_WORLD);
+	tempoComputacaoInterna += MPI_Wtime() - tempoInicio;
 
 	// Computação das bordas.
 	for (int count = 0; count < todosDispositivos; count++)
