@@ -5,15 +5,15 @@
 #include <math.h>
 #include <sys/time.h>
 #include <string.h>
+#include <iostream>
 
-Balanceador::Balanceador(int argc, char *argv[], int malha[])
+using namespace std;
+
+Balanceador::Balanceador(int argc, char *argv[],void *data, const size_t Element_sz, const unsigned long int N_Element, void *DTK, const size_t div_size )
 {
-	printf("Iniciando MPI....\n");
-	// MPI_Init(&argc, &argv);
-	MPI_Init(NULL, NULL);
-	xMalhaLength = malha[0];
-	yMalhaLength = malha[1];
-	zMalhaLength = malha[2];
+	
+	
+	MPI_Init(&argc, &argv);
 
 	HABILITAR_BENCHMARK = false;
 	HABILITAR_ESTATICO = true;
@@ -21,46 +21,31 @@ Balanceador::Balanceador(int argc, char *argv[], int malha[])
 
 	CPU_WORK_GROUP_SIZE = 8;
 	GPU_WORK_GROUP_SIZE = 64;
-	SIMULACOES = 10000;
-	INTERVALO_BALANCEAMENTO = 1000;
-	PRECISAO_BALANCEAMENTO = 10;
-
-	OFFSET_COMPUTACAO = 0;
-	LENGTH_COMPUTACAO = 1;
-	COMPRIMENTO_GLOBAL_X = 2;
-	COMPRIMENTO_GLOBAL_Y = 3;
-	COMPRIMENTO_GLOBAL_Z = 4;
-	MALHA_DIMENSAO_POSICAO_Z = 5;
-	MALHA_DIMENSAO_POSICAO_Y = 6;
-	MALHA_DIMENSAO_POSICAO_X = 7;
-	MALHA_DIMENSAO_CELULAS = 8;
-	NUMERO_PARAMETROS_MALHA = 9;
-
+	
+	
+	Element_size = Element_sz;
+	N_Elements = N_Element;
+	
 	MPI_Comm_size(MPI_COMM_WORLD, &world_size);
 	MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
-	printf("Fim da inicialização...\n");
 
-	// MPI_Request sendRequest, receiveRequest;		Variáveis usadas na borda, porém esta parte foi removida do código
+	int dispositivos = InitParallelProcessor();
+	
 	dispositivosLocal = new int[world_size];
-	printf("Inicializando openCL...\n");
-	dispositivos = InitParallelProcessor();
-	printf("0...\n");
-	// dispositivosLocal[world_size];
-	printf("Disp. Local...\n");
-	// dispositivosWorld[world_size];
 	dispositivosWorld = new int[world_size];
-	printf("Disp. World...\n");
+	
+
 	memset(dispositivosLocal, 0, sizeof(int) * world_size);
-	printf("Memset...\n");
+	
 	dispositivosLocal[world_rank] = dispositivos;
-	printf("Disp[]...\n");
-	MPI_Allreduce(dispositivosLocal, dispositivosWorld, world_size, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
-	printf("MPI_ALLreduce\n");
+	
+	MPI_Allreduce(&dispositivosLocal, &dispositivosWorld, world_size, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+	
 	todosDispositivos = 0;
-	printf("for...\n");
+	
 	for (int count = 0; count < world_size; count++)
 	{
-		printf("2...\n");
+		
 		if (count == world_rank)
 		{
 			meusDispositivosOffset = todosDispositivos;
@@ -68,45 +53,52 @@ Balanceador::Balanceador(int argc, char *argv[], int malha[])
 		}
 		todosDispositivos += dispositivosWorld[count];
 	}
-	printf("Meus dispositivos offset = %d\n", meusDispositivosOffset);
-	printf("Todos dispositivos = %d\n", todosDispositivos);
-	printf("Fim da inicialização...\n");
+	
+	DataToKernel = malloc(sizeof(DTK));
+    memcpy(DataToKernel, DTK, sizeof(DTK));
+	
+	Data = malloc(Element_sz * N_Element);
+    memcpy(Data, data, Element_sz * N_Element);
+	int* intData = reinterpret_cast<int*>(Data);
 
-	*malhaSwapBuffer[2];
-	tempos[todosDispositivos];
-	cargasNovas[todosDispositivos];
-	cargasAntigas[todosDispositivos];
+
+	SwapBuffer = new void*[2];
+	
+            SwapBuffer[0] = malloc(Element_sz * N_Element);
+            memcpy(SwapBuffer[0], data, Element_sz * N_Element);
+			SwapBuffer[1] = malloc(Element_sz * N_Element);
+            memcpy(SwapBuffer[1], data, Element_sz * N_Element);
+        
+	
+
+
+	
+	tempos = new double[todosDispositivos];
+	cargasNovas = new float[todosDispositivos];
+	cargasAntigas = new float[todosDispositivos];
 	double LocalWriteByte = 0;
-
-	parametrosMalhaDispositivo[todosDispositivos];
-	malhaSwapBufferDispositivo[todosDispositivos][2];
-	kernelDispositivo[todosDispositivos];
-	dataEventoDispositivo[todosDispositivos];
-	kernelEventoDispositivo[todosDispositivos];
+	DataToKernelDispositivo = new int [todosDispositivos];
+	*SwapBufferDispositivo = new int[todosDispositivos];
+	SwapBufferDispositivo[0] = new int;
+	SwapBufferDispositivo[1] = new int;
+	kernelDispositivo = new int[todosDispositivos];
+	dataEventoDispositivo = new int[todosDispositivos];
+	kernelEventoDispositivo = new int [todosDispositivos];
+	OFFSET_COMPUTACAO = new unsigned int[todosDispositivos];
+	LENGTH_COMPUTACAO = new unsigned long int[todosDispositivos];
 
 	offsetComputacao = 0;
-	lengthComputacao = (xMalhaLength * yMalhaLength * zMalhaLength) / todosDispositivos;
-	printf("Inicialização dos dispositivos...\n");
+	lengthComputacao = (N_Elements) / todosDispositivos;
+	
 	InicializaDispositivos();
-	printf("Fim da inicialização dos dispositivos...\n");
-	printf("Distribuição de carga...\n");
-	DstribuicaoDeCarga();
-	printf("Fim...\n");
+	
+	DistribuicaoUniformeDeCarga();
+	
 }
 
 Balanceador::~Balanceador()
 {
-	for (int count = 0; count < todosDispositivos; count++)
-	{
-		if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength)
-		{
-			delete parametrosMalha;
-			parametrosMalha[count] = NULL;
-		}
-	}
-	delete malhaSwapBuffer;
-	malhaSwapBuffer[0] = NULL;
-	malhaSwapBuffer[1] = NULL;
+	
 
 	FinishParallelProcessor();
 	MPI_Finalize();
@@ -196,66 +188,64 @@ float Balanceador::ComputarNorma(const float *cargasAntigas, const float *cargas
 	return sqrt(retorno);
 }
 
-void Balanceador::InicializarParametrosMalha(int **parametrosMalha, unsigned int offsetComputacao, unsigned int lengthComputacao, unsigned int xMalhaLength, unsigned int yMalhaLength, unsigned int zMalhaLength)
-{
-	printf("Dentro da Inicialização da malha...\n");
-	*parametrosMalha = new int[NUMERO_PARAMETROS_MALHA];
 
-	(*parametrosMalha)[OFFSET_COMPUTACAO] = offsetComputacao;
-	(*parametrosMalha)[LENGTH_COMPUTACAO] = lengthComputacao;
-	(*parametrosMalha)[COMPRIMENTO_GLOBAL_X] = xMalhaLength;
-	(*parametrosMalha)[COMPRIMENTO_GLOBAL_Y] = yMalhaLength;
-	(*parametrosMalha)[COMPRIMENTO_GLOBAL_Z] = zMalhaLength;
-	(*parametrosMalha)[MALHA_DIMENSAO_POSICAO_Z] = yMalhaLength * xMalhaLength * MALHA_TOTAL_CELULAS;
-	(*parametrosMalha)[MALHA_DIMENSAO_POSICAO_Y] = xMalhaLength * MALHA_TOTAL_CELULAS;
-	(*parametrosMalha)[MALHA_DIMENSAO_POSICAO_X] = MALHA_TOTAL_CELULAS;
-	(*parametrosMalha)[MALHA_DIMENSAO_CELULAS] = 1;
-	printf("Fim Inicialização da malha...\n");
+
+
+void Balanceador::InicializarLenghtOffset(unsigned int offsetComputacao, unsigned int lengthComputacao, int count)
+{
+	
+	OFFSET_COMPUTACAO[count] = offsetComputacao;
+	LENGTH_COMPUTACAO[count]= lengthComputacao;	
+
 }
+
 
 // Função de inicialização em todos os dispositivos
 void Balanceador::InicializaDispositivos()
 {
-	printf("Dentro da Inicialização dos dispositivos...\n");
-	//*parametrosMalha = new int[todosDispositivos];
-	parametrosMalhaDispositivo = new int *[todosDispositivos];
-	malhaSwapBufferDispositivo = new float **[todosDispositivos];
+	
+	
+	
 	for (int count = 0; count < todosDispositivos; count++)
 	{
 		if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength)
 		{
-			printf("inicialização dos parametros da malha...\n");
-			InicializarParametrosMalha(&parametrosMalha[count], offsetComputacao, (count + 1 == todosDispositivos) ? (xMalhaLength * yMalhaLength * zMalhaLength) - offsetComputacao : lengthComputacao, xMalhaLength, yMalhaLength, zMalhaLength);
-			parametrosMalhaDispositivo[count] = new int[NUMERO_PARAMETROS_MALHA];
-			malhaSwapBufferDispositivo[count] = new float *[2];
-			printf("Criando objeto 1...\n");
-			printf("Meus dispositivos offset (2) = %d\n", meusDispositivosOffset);
-			parametrosMalhaDispositivo[count] = CreateMemoryObject(count - meusDispositivosOffset, sizeof(int) * NUMERO_PARAMETROS_MALHA, CL_MEM_READ_ONLY, NULL);
-			printf("Criando objeto 2...\n");
-			malhaSwapBufferDispositivo[count][0] = CreateMemoryObject(count - meusDispositivosOffset, sizeof(float) * (xMalhaLength * yMalhaLength * zMalhaLength * MALHA_TOTAL_CELULAS), CL_MEM_READ_WRITE, NULL);
-			printf("Criando objeto 3...\n");
-			malhaSwapBufferDispositivo[count][1] = CreateMemoryObject(count - meusDispositivosOffset, sizeof(float) * (xMalhaLength * yMalhaLength * zMalhaLength * MALHA_TOTAL_CELULAS), CL_MEM_READ_WRITE, NULL);
-			printf("Escrevendo objeto 1...\n");
-			WriteToMemoryObject(count - meusDispositivosOffset, parametrosMalhaDispositivo[count], (char *)parametrosMalha[count], 0, sizeof(int) * NUMERO_PARAMETROS_MALHA);
-			sizeCarga = sizeof(float) * (xMalhaLength * yMalhaLength * zMalhaLength * MALHA_TOTAL_CELULAS);
-			printf("Escrevendo objeto 2...\n");
-			WriteToMemoryObject(count - meusDispositivosOffset, malhaSwapBufferDispositivo[count][0], (char *)malhaSwapBuffer[0], 0, sizeCarga);
-			printf("Escrevendo objeto 3...\n");
-			WriteToMemoryObject(count - meusDispositivosOffset, malhaSwapBufferDispositivo[count][1], (char *)malhaSwapBuffer[1], 0, sizeCarga);
-			LocalWriteByte = sizeCarga / (tempoFim - tempoInicio) * 2;
+			
+			InicializarLenghtOffset(offsetComputacao, (count + 1 == todosDispositivos) ? (N_Elements) - offsetComputacao : lengthComputacao, count);
+		
+			DataToKernelDispositivo[count] = CreateMemoryObject(count - meusDispositivosOffset, sizeof(DataToKernel), CL_MEM_READ_ONLY, NULL);
+			
+			SwapBufferDispositivo[count][0] = CreateMemoryObject(count - meusDispositivosOffset, sizeof(Element_size) * N_Elements, CL_MEM_READ_WRITE, NULL);
+			
+			SwapBufferDispositivo[count][1] = CreateMemoryObject(count - meusDispositivosOffset, sizeof(Element_size) * N_Elements, CL_MEM_READ_WRITE, NULL);
+		
+			WriteToMemoryObject(count - meusDispositivosOffset, DataToKernelDispositivo[count], (char *)DataToKernel, 0, sizeof(DataToKernel) );
+			
+			sizeCarga = sizeof(Element_size) * N_Elements;
+			
+			WriteToMemoryObject(count - meusDispositivosOffset, SwapBufferDispositivo[count][0], (char *)SwapBuffer[0], 0, sizeCarga);
+			
+			WriteToMemoryObject(count - meusDispositivosOffset, SwapBufferDispositivo[count][1], (char *)SwapBuffer[1], 0, sizeCarga);
+			
+			double LocalWriteByte = sizeCarga / (tempoFim - tempoInicio) * 2;
+			
 			SynchronizeCommandQueue(count - meusDispositivosOffset);
-
+			
 			MPI_Allreduce(&LocalWriteByte, &writeByte, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
-
+			
 			kernelDispositivo[count] = CreateKernel(count - meusDispositivosOffset, "kernels.cl", "ProcessarPontos");
-			SetKernelAttribute(count - meusDispositivosOffset, kernelDispositivo[count], 0, malhaSwapBufferDispositivo[count][0]);
-			SetKernelAttribute(count - meusDispositivosOffset, kernelDispositivo[count], 1, malhaSwapBufferDispositivo[count][1]);
-			SetKernelAttribute(count - meusDispositivosOffset, kernelDispositivo[count], 2, parametrosMalhaDispositivo[count]);
+			
+			SetKernelAttribute(count - meusDispositivosOffset, kernelDispositivo[count], 0, SwapBufferDispositivo[count][0]);
+			
+			SetKernelAttribute(count - meusDispositivosOffset, kernelDispositivo[count], 1, SwapBufferDispositivo[count][1]);
+			
+			SetKernelAttribute(count - meusDispositivosOffset, kernelDispositivo[count], 2, DataToKernelDispositivo[count]);
 		}
-		printf("Soma offset...\n");
+		
 		offsetComputacao += lengthComputacao;
+		
 	}
-	printf("Fim da função...\n");
+	
 }
 
 void Balanceador::PrecisaoBalanceamento(int &simulacao)
@@ -272,8 +262,8 @@ void Balanceador::PrecisaoBalanceamento(int &simulacao)
 			{
 				if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength)
 				{
-					SetKernelAttribute(count - meusDispositivosOffset, kernelDispositivo[count], 0, malhaSwapBufferDispositivo[count][0]);
-					SetKernelAttribute(count - meusDispositivosOffset, kernelDispositivo[count], 1, malhaSwapBufferDispositivo[count][1]);
+					SetKernelAttribute(count - meusDispositivosOffset, kernelDispositivo[count], 0, SwapBufferDispositivo[count][0]);
+					SetKernelAttribute(count - meusDispositivosOffset, kernelDispositivo[count], 1, SwapBufferDispositivo[count][1]);
 				}
 			}
 		}
@@ -283,11 +273,11 @@ void Balanceador::PrecisaoBalanceamento(int &simulacao)
 			{
 				if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength)
 				{
-					SetKernelAttribute(count - meusDispositivosOffset, kernelDispositivo[count], 0, malhaSwapBufferDispositivo[count][1]);
-					SetKernelAttribute(count - meusDispositivosOffset, kernelDispositivo[count], 1, malhaSwapBufferDispositivo[count][0]);
+					SetKernelAttribute(count - meusDispositivosOffset, kernelDispositivo[count], 0, SwapBufferDispositivo[count][1]);
+					SetKernelAttribute(count - meusDispositivosOffset, kernelDispositivo[count], 1, SwapBufferDispositivo[count][0]);
 				}
 
-				kernelEventoDispositivo[count] = RunKernel(count - meusDispositivosOffset, kernelDispositivo[count], parametrosMalha[count][OFFSET_COMPUTACAO], parametrosMalha[count][LENGTH_COMPUTACAO], isDeviceCPU(count - meusDispositivosOffset) ? CPU_WORK_GROUP_SIZE : GPU_WORK_GROUP_SIZE);
+				kernelEventoDispositivo[count] = RunKernel(count - meusDispositivosOffset, kernelDispositivo[count],OFFSET_COMPUTACAO[count],LENGTH_COMPUTACAO[count], isDeviceCPU(count - meusDispositivosOffset) ? CPU_WORK_GROUP_SIZE : GPU_WORK_GROUP_SIZE);
 			}
 		}
 
@@ -313,13 +303,17 @@ void Balanceador::PrecisaoBalanceamento(int &simulacao)
 	{
 		if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength)
 		{
+<<<<<<< HEAD
 			tempos[count] = ticks[count] / (frequencias[count] * PRECISAO_BALANCEAMENTO) / cargasNovas[count];
+=======
+			tempos[count] = ticks[count] / (frequencias[count] * PRECISAO_BALANCEAMENTO);
+>>>>>>> 7f2d0f8c4a58a90533af88ea897acedd0d13b3b3
 		}
 	}
 	MPI_Allreduce(tempos, tempos_root, todosDispositivos, MPI_LONG, MPI_SUM, MPI_COMM_WORLD);
 	memcpy(tempos, tempos_root, sizeof(long int) * todosDispositivos);
 }
-
+/*
 void Balanceador::BalanceamentoDeCarga(int simulacao)
 {
 	double tempoInicioBalanceamento = MPI_Wtime();
@@ -355,8 +349,8 @@ void Balanceador::BalanceamentoDeCarga(int simulacao)
 						{
 							int overlap[2];
 							int alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, count2);
-							float *malha = ((simulacao % 2) == 0) ? malhaSwapBuffer[0] : malhaSwapBuffer[1];
-							int malhaDevice = ((simulacao % 2) == 0) ? malhaSwapBufferDispositivo[count][0] : malhaSwapBufferDispositivo[count][1];
+							float *malha = ((simulacao % 2) == 0) ? SwapBuffer[0] : SwapBuffer[1];
+							int malhaDevice = ((simulacao % 2) == 0) ? SwapBufferDispositivo[count][0] : SwapBufferDispositivo[count][1];
 							MPI_Recv(overlap, 2, MPI_INT, alvo, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 							// Podem ocorrer requisicoes vazias.
 							if (overlap[1] > 0)
@@ -619,8 +613,8 @@ void Balanceador::ComputaKernel(int simulacao)
 		}
 	}
 }
-
-/* void Balanceador::DstribuicaoUniformeDeCarga()
+*/
+void Balanceador::DistribuicaoUniformeDeCarga()
 {
 
 	for (int count = 0; count < todosDispositivos; count++)
@@ -629,10 +623,5 @@ void Balanceador::ComputaKernel(int simulacao)
 		cargasAntigas[count] = cargasNovas[count];
 		tempos[count] = 1;
 	}
-} */
+} 
 
-void Balanceador::SetMalha(double **malha[])
-{
-
-	printf("TESTE\n");
-}

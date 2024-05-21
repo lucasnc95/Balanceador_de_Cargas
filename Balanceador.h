@@ -7,6 +7,9 @@
 #include <sys/time.h>
 #include <string.h>
 
+
+
+
 class Balanceador
 {
 
@@ -22,53 +25,48 @@ private:
   unsigned int PRECISAO_BALANCEAMENTO;
   float BALANCEAMENTO_THRESHOLD;
   bool HABILITAR_BENCHMARK;
-  double **malha;
-  int xMalhaLength, yMalhaLength, zMalhaLength;
+  
+  void *Data;
+  void *DataToKernel;
+  
   int todosDispositivos;
   double tempoInicio, tempoFim;
   double tempoComputacaoInterna;
   double tempoTrocaBorda;
   double tempoComputacaoBorda;
   double tempoBalanceamento;
-  int **parametrosMalha; //[todosDispositivos]
-  float *malhaSwapBuffer[2];
-  long int *ticks;      //[todosDispositivos]
-  double *tempos;       //[todosDispositivos]
-  float *cargasNovas;   //[todosDispositivos]
-  float *cargasAntigas; //[todosDispositivos]
+  
+  void **SwapBuffer;
+  long int *ticks;      
+  double *tempos;       
+  float *cargasNovas;   
+  float *cargasAntigas; 
   double writeByte;
   double fatorErro;
-  int *parametrosMalhaDispositivo;    //[todosDispositivos]
-  float **malhaSwapBufferDispositivo; //[todosDispositivos][2]
-  int *kernelDispositivo;             //[todosDispositivos]
-  int *dataEventoDispositivo;         //[todosDispositivos]
-  int *kernelEventoDispositivo;       //[todosDispositivos]
+  size_t Element_size;
+  long int N_Elements;
+  int *DataToKernelDispositivo;    
+  int **SwapBufferDispositivo; 
+  int *kernelDispositivo;             
+  int *dataEventoDispositivo;         
+  int *kernelEventoDispositivo;       
   int offsetComputacao;
   int lengthComputacao;
   int sizeCarga;
   bool balanceamento;
   double latencia;
   double banda;
-  int dispositivos;
+  double *frequencias;
+  
   int meusDispositivosOffset;
   int meusDispositivosLength;
-  bool setMalha;
-  bool setMalhaSwapbuffer;
   int world_size;
   int world_rank;
   int *dispositivosLocal;
   int *dispositivosWorld;
-  unsigned int OFFSET_COMPUTACAO;
-  unsigned int LENGTH_COMPUTACAO;
-  unsigned int COMPRIMENTO_GLOBAL_X;
-  unsigned int COMPRIMENTO_GLOBAL_Y;
-  unsigned int COMPRIMENTO_GLOBAL_Z;
-  unsigned int MALHA_DIMENSAO_POSICAO_Z;
-  unsigned int MALHA_DIMENSAO_POSICAO_Y;
-  unsigned int MALHA_DIMENSAO_POSICAO_X;
-  unsigned int MALHA_DIMENSAO_CELULAS = 1;
-  unsigned int NUMERO_PARAMETROS_MALHA;
-  unsigned int MALHA_TOTAL_CELULAS;
+  unsigned int *OFFSET_COMPUTACAO;
+  unsigned long int *LENGTH_COMPUTACAO;
+  
 
   void ComputarCargas(const long int *tempos, const float *cargasAntigas, float *cargas, int participantes);
   bool ComputarIntersecao(int offset1, int length1, int offset2, int length2, int *intersecaoOffset, int *intersecaoLength);
@@ -78,17 +76,17 @@ private:
   void InicializarParametrosMalha(int **parametrosMalha, unsigned int offsetComputacao, unsigned int lengthComputacao, unsigned int xMalhaLength, unsigned int yMalhaLength, unsigned int zMalhaLength);
   void LerPontos(const double *malha, const int *parametrosMalha);
   void InicializaDispositivos();
-  void DstribuicaoUniformeDeCarga();
+  void DistribuicaoUniformeDeCarga();
   void BalanceamentoDeCarga(int simulacao);
   void ComputaKernel(int simulacao);
   void Probing(int simulacao);
   void PrecisaoBalanceamento(int &simulacao);
   void ExecutarBalanceamento();
+  void InicializarLenghtOffset(unsigned int offsetComputacao, unsigned int lengthComputacao, int count);
 
 public:
-  Balanceador(int argc, char *argv[], int malha[]);
+  Balanceador(int argc, char *argv[], void *data, const size_t Element_sz, const unsigned long int N_Element, void *DTK, const size_t div_size );
   ~Balanceador();
-  void SetmalhaSwapBuffer(double *malhaSwapBuffer[]);
-  void SetMalha(double **malha[]);
+  
 };
 #endif
