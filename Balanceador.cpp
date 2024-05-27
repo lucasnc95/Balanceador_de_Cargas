@@ -72,7 +72,6 @@ Balanceador::Balanceador(int argc, char *argv[], void *data, const size_t Elemen
 	tempos = new double[todosDispositivos];
 	cargasNovas = new float[todosDispositivos];
 	cargasAntigas = new float[todosDispositivos];
-	double localWriteByte = 0;
 	DataToKernelDispositivo = new int[todosDispositivos];
 	SwapBufferDispositivo = new int *[todosDispositivos];
 	for (int i = 0; i < todosDispositivos; ++i)
@@ -99,7 +98,6 @@ Balanceador::Balanceador(int argc, char *argv[], void *data, const size_t Elemen
 
 Balanceador::~Balanceador()
 {
-
 	FinishParallelProcessor();
 	MPI_Finalize();
 }
@@ -209,17 +207,17 @@ void Balanceador::InicializaDispositivos(int meusDispositivosOffset, int meusDis
 			InicializarLenghtOffset(offsetComputacao, (count + 1 == todosDispositivos) ? (N_Elements)-offsetComputacao : lengthComputacao, count);
 			DataToKernelDispositivo[count] = CreateMemoryObject(count - meusDispositivosOffset, DataToKernel_Size, CL_MEM_READ_ONLY, NULL);
 			cout << "N_Elements: " << N_Elements << " Element_size: " << Element_size << " DatatoKernel size: " << DataToKernel_Size << endl;
-			SwapBufferDispositivo[count][0] = CreateMemoryObject(count - meusDispositivosOffset, Element_size * N_Elements, CL_MEM_READ_WRITE, NULL);
-			SwapBufferDispositivo[count][1] = CreateMemoryObject(count - meusDispositivosOffset, Element_size * N_Elements, CL_MEM_READ_WRITE, NULL);
-			WriteToMemoryObject(count - meusDispositivosOffset, DataToKernelDispositivo[count], (char *)DataToKernel, 0, DataToKernel_Size);
 			sizeCarga = Element_size * N_Elements;
+			SwapBufferDispositivo[count][0] = CreateMemoryObject(count - meusDispositivosOffset, sizeCarga, CL_MEM_READ_WRITE, NULL);
+			SwapBufferDispositivo[count][1] = CreateMemoryObject(count - meusDispositivosOffset, sizeCarga, CL_MEM_READ_WRITE, NULL);
+			WriteToMemoryObject(count - meusDispositivosOffset, DataToKernelDispositivo[count], (char *)DataToKernel, 0, DataToKernel_Size);
+			SynchronizeCommandQueue(count - meusDispositivosOffset);
 			tempoInicio = MPI_Wtime();
 			WriteToMemoryObject(count - meusDispositivosOffset, SwapBufferDispositivo[count][0], (char *)SwapBuffer[0], 0, sizeCarga);
 			WriteToMemoryObject(count - meusDispositivosOffset, SwapBufferDispositivo[count][1], (char *)SwapBuffer[1], 0, sizeCarga);
 			double aux = (MPI_Wtime() - tempoInicio) / sizeCarga / 2;
 			localWriteByte = aux > localWriteByte ? aux : localWriteByte;
 			cout << "Local Writebyte: " << localWriteByte << endl;
-			SynchronizeCommandQueue(count - meusDispositivosOffset);
 
 			kernelDispositivo[count] = CreateKernel(count - meusDispositivosOffset, "kernels.cl", "ProcessarPontos");
 			SetKernelAttribute(count - meusDispositivosOffset, kernelDispositivo[count], 0, SwapBufferDispositivo[count][0]);
@@ -502,7 +500,7 @@ void Balanceador::Probing(int simulacao)
 								int alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, count2);
 								float *malha = ((simulacao % 2) == 0) ? malhaSwapBuffer[0] : malhaSwapBuffer[1];
 								int malhaDevice = ((simulacao % 2) == 0) ? malhaSwapBufferDispositivo[count][0] : malhaSwapBufferDispositivo[count][1];
-
+								SynchronizeCommandQueue(count - meusDispositivosOffset);
 								double tempoInicioLatencia = MPI_Wtime();
 								MPI_Ssend(overlap, 2, MPI_INT, alvo, 0, MPI_COMM_WORLD);
 								double aux = (MPI_Wtime() - tempoInicioLatencia) / 2;
