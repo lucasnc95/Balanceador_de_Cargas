@@ -7,12 +7,8 @@
 #include <sys/time.h>
 #include <string.h>
 
-
-
-
 class Balanceador
 {
-
 private:
   MPI_Request sendRequest, receiveRequest, recvNotification;
   unsigned int CPU_WORK_GROUP_SIZE;
@@ -25,32 +21,32 @@ private:
   unsigned int PRECISAO_BALANCEAMENTO;
   float BALANCEAMENTO_THRESHOLD;
   bool HABILITAR_BENCHMARK;
-  
+
   void *Data;
   void *DataToKernel;
-  
+
   int todosDispositivos;
   double tempoInicio, tempoFim;
   double tempoComputacaoInterna;
   double tempoTrocaBorda;
   double tempoComputacaoBorda;
   double tempoBalanceamento;
-  
+
   void **SwapBuffer;
-  long int *ticks;      
-  double *tempos;       
-  float *cargasNovas;   
-  float *cargasAntigas; 
+  long int *ticks;
+  double *tempos;
+  float *cargasNovas;
+  float *cargasAntigas;
   double writeByte;
   double fatorErro;
   size_t Element_size;
   size_t DataToKernel_Size;
   long int N_Elements;
-  int *DataToKernelDispositivo;    
-  int **SwapBufferDispositivo; 
-  int *kernelDispositivo;             
-  int *dataEventoDispositivo;         
-  int *kernelEventoDispositivo;       
+  int *DataToKernelDispositivo;
+  int **SwapBufferDispositivo;
+  int *kernelDispositivo;
+  int *dataEventoDispositivo;
+  int *kernelEventoDispositivo;
   int offsetComputacao;
   int lengthComputacao;
   int sizeCarga;
@@ -58,7 +54,7 @@ private:
   double latencia;
   double banda;
   double *frequencias;
-  
+
   int meusDispositivosOffset;
   int meusDispositivosLength;
   int world_size;
@@ -67,7 +63,6 @@ private:
   int *dispositivosWorld;
   unsigned int *OFFSET_COMPUTACAO;
   unsigned long int *LENGTH_COMPUTACAO;
-  
 
   void ComputarCargas(const long int *tempos, const float *cargasAntigas, float *cargas, int participantes);
   bool ComputarIntersecao(int offset1, int length1, int offset2, int length2, int *intersecaoOffset, int *intersecaoLength);
@@ -86,8 +81,7 @@ private:
   void InicializarLenghtOffset(unsigned int offsetComputacao, unsigned int lengthComputacao, int count);
 
 public:
-  Balanceador(int argc, char *argv[], void *data, const size_t Element_sz, const unsigned long int N_Element, void *DTK, const size_t div_size );
+  Balanceador(int argc, char *argv[], void *data, const size_t Element_sz, const unsigned long int N_Element, void *DTK, const size_t div_size);
   ~Balanceador();
-  
 };
 #endif
