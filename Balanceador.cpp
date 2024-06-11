@@ -69,7 +69,7 @@ Balanceador::Balanceador(int argc, char *argv[], void *data, const size_t Elemen
 	memcpy(SwapBuffer[1], data, Element_sz * N_Element);
 
 	ticks = new long int[todosDispositivos];
-	tempos = new double[todosDispositivos];
+	tempos = new float[todosDispositivos];
 	cargasNovas = new float[todosDispositivos];
 	cargasAntigas = new float[todosDispositivos];
 	DataToKernelDispositivo = new int[todosDispositivos];
@@ -236,7 +236,7 @@ void Balanceador::PrecisaoBalanceamento(int simulacao)
 	// Precisao do balanceamento.
 
 	memset(ticks, 0, sizeof(long int) * todosDispositivos);
-	memset(tempos, 0, sizeof(double) * todosDispositivos);
+	memset(tempos, 0, sizeof(float) * todosDispositivos);
 
 	for (int precisao = 0; precisao < PRECISAO_BALANCEAMENTO; precisao++)
 	{
@@ -290,13 +290,13 @@ void Balanceador::PrecisaoBalanceamento(int simulacao)
 	//  	if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength)
 	//  	{
 	//  		SynchronizeCommandQueue(count - meusDispositivosOffset);
-	//  		tempos[count] = ticks[count] / (GetMaxFrequency(count) * PRECISAO_BALANCEAMENTO) / cargasNovas[count];
+	//  		tempos[count] = ((float)ticks[count]) / (((float)(GetMaxFrequency(count)) * PRECISAO_BALANCEAMENTO) * cargasNovas[count]);
 	//  	}
 	//  }
 	//  cout<<"reduce freq"<<endl;
-	//  double tempos_root[todosDispositivos];
-	//  MPI_Allreduce(tempos, tempos_root, todosDispositivos, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-	//  memcpy(tempos, tempos_root, sizeof(double) * todosDispositivos);
+	//  float tempos_root[todosDispositivos];
+	//  MPI_Allreduce(tempos, tempos_root, todosDispositivos, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
+	//  memcpy(tempos, tempos_root, sizeof(float) * todosDispositivos);
 }
 /*
 void Balanceador::BalanceamentoDeCarga(int simulacao)
