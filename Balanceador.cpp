@@ -9,7 +9,8 @@
 
 using namespace std;
 
-Balanceador::Balanceador(int argc, char *argv[], void *data, const size_t Element_sz, const unsigned long int N_Element, void *DTK, const size_t div_size)
+template<typename T, typename U>
+Balanceador<T,U>::Balanceador(int argc, char *argv[], T *data, const size_t Element_sz, const unsigned long int N_Element, U *DTK, const size_t div_size)
 {
 
 	MPI_Init(&argc, &argv);
@@ -52,24 +53,27 @@ Balanceador::Balanceador(int argc, char *argv[], void *data, const size_t Elemen
 		}
 		todosDispositivos += dispositivosWorld[count];
 	}
+	Data = new T[8*8*8*8];
+  	DataToKernel = new U[8];
 
-	DataToKernel = malloc(sizeof(DTK));
-	memcpy(DataToKernel, DTK, sizeof(DTK));
 
-	Data = malloc(Element_sz * N_Element);
+	//DataToKernel = malloc(sizeof(int)*8);
+	memcpy(DataToKernel, DTK, (sizeof(int)*8));
+
+	//Data = malloc(Element_sz * N_Element);
 	memcpy(Data, data, Element_sz * N_Element);
-	int *intData = reinterpret_cast<int *>(Data);
-
+	
+	
 	cout << "Disp offset = " << meusDispositivosOffset << endl;
-	SwapBuffer = new void *[2];
+	SwapBuffer = new T *[2];
 
-	SwapBuffer[0] = malloc(Element_sz * N_Element);
-	memcpy(SwapBuffer[0], data, Element_sz * N_Element);
-	SwapBuffer[1] = malloc(Element_sz * N_Element);
-	memcpy(SwapBuffer[1], data, Element_sz * N_Element);
+	SwapBuffer[0] = new T[(Element_sz * N_Element)];
+	//memcpy(SwapBuffer[0], data, Element_sz * N_Element);
+	SwapBuffer[1] = new T[(Element_sz * N_Element)];
+	//memcpy(SwapBuffer[1], data, Element_sz * N_Element);
 
 	ticks = new long int[todosDispositivos];
-	tempos = new float[todosDispositivos];
+	tempos = new double[todosDispositivos];
 	cargasNovas = new float[todosDispositivos];
 	cargasAntigas = new float[todosDispositivos];
 	DataToKernelDispositivo = new int[todosDispositivos];
@@ -91,18 +95,20 @@ Balanceador::Balanceador(int argc, char *argv[], void *data, const size_t Elemen
 
 	DistribuicaoUniformeDeCarga();
 	cout << "Balanceamento 1" << endl;
-	// PrecisaoBalanceamento(0);
+	 PrecisaoBalanceamento(0);
 	cout << "Balanceamento 2" << endl;
 	PrecisaoBalanceamento(1);
 }
 
-Balanceador::~Balanceador()
+template<typename T, typename U>
+Balanceador<T,U>::~Balanceador()
 {
 	FinishParallelProcessor();
 	MPI_Finalize();
 }
 
-void Balanceador::ComputarCargas(const long int *ticks, const float *cargasAntigas, float *cargas, int participantes)
+template<typename T, typename U>
+void Balanceador<T,U>::ComputarCargas(const long int *ticks, const float *cargasAntigas, float *cargas, int participantes)
 {
 	if (participantes == 1)
 	{
@@ -123,8 +129,8 @@ void Balanceador::ComputarCargas(const long int *ticks, const float *cargasAntig
 	}
 }
 
-// Offset1 deve ser sempre menor ou igual que offset2.
-bool Balanceador::ComputarIntersecao(int offset1, int length1, int offset2, int length2, int *intersecaoOffset, int *intersecaoLength)
+template<typename T, typename U>
+bool Balanceador<T,U>::ComputarIntersecao(int offset1, int length1, int offset2, int length2, int *intersecaoOffset, int *intersecaoLength)
 {
 	if (offset1 + length1 <= offset2)
 	{
@@ -144,7 +150,8 @@ bool Balanceador::ComputarIntersecao(int offset1, int length1, int offset2, int 
 	return true;
 }
 
-int Balanceador::RecuperarPosicaoHistograma(int *histograma, int tamanho, int indice)
+template<typename T, typename U>
+int Balanceador<T,U>::RecuperarPosicaoHistograma(int *histograma, int tamanho, int indice)
 {
 	int offset = 0;
 	for (int count = 0; count < tamanho; count++)
@@ -158,7 +165,8 @@ int Balanceador::RecuperarPosicaoHistograma(int *histograma, int tamanho, int in
 	return -1;
 }
 
-float Balanceador::ComputarDesvioPadraoPercentual(const long int *ticks, int participantes)
+template<typename T, typename U>
+float Balanceador<T,U>::ComputarDesvioPadraoPercentual(const long int *ticks, int participantes)
 {
 	double media = 0.0;
 	for (int count = 0; count < participantes; count++)
@@ -176,7 +184,8 @@ float Balanceador::ComputarDesvioPadraoPercentual(const long int *ticks, int par
 	return sqrt(variancia) / media;
 }
 
-float Balanceador::ComputarNorma(const float *cargasAntigas, const float *cargasNovas, int participantes)
+template<typename T, typename U>
+float Balanceador<T,U>::ComputarNorma(const float *cargasAntigas, const float *cargasNovas, int participantes)
 {
 	float retorno = 0.0;
 	for (int count = 0; count < participantes; count++)
@@ -186,15 +195,17 @@ float Balanceador::ComputarNorma(const float *cargasAntigas, const float *cargas
 	return sqrt(retorno);
 }
 
-void Balanceador::InicializarLenghtOffset(unsigned int offsetComputacao, unsigned int lengthComputacao, int count)
+template<typename T, typename U>
+void Balanceador<T,U>::InicializarLenghtOffset(unsigned int offsetComputacao, unsigned int lengthComputacao, int count)
 {
 
 	OFFSET_COMPUTACAO[count] = offsetComputacao;
 	LENGTH_COMPUTACAO[count] = lengthComputacao;
 }
 
-// Função de inicialização em todos os dispositivos
-void Balanceador::InicializaDispositivos(int meusDispositivosOffset, int meusDispositivosLenght, int offsetComputacao, int lengthComputacao)
+
+template<typename T, typename U>
+void Balanceador<T,U>::InicializaDispositivos(int meusDispositivosOffset, int meusDispositivosLenght, int offsetComputacao, int lengthComputacao)
 {
 	double localWriteByte = 0;
 
@@ -231,31 +242,32 @@ void Balanceador::InicializaDispositivos(int meusDispositivosOffset, int meusDis
 	cout << "Writebyte: " << writeByte << endl;
 }
 
-void Balanceador::PrecisaoBalanceamento(int simulacao)
+template<typename T, typename U>
+void Balanceador<T,U>::PrecisaoBalanceamento(int simulacao)
 {
 	// Precisao do balanceamento.
 
 	memset(ticks, 0, sizeof(long int) * todosDispositivos);
-	memset(tempos, 0, sizeof(float) * todosDispositivos);
+	memset(tempos, 0, sizeof(double) * todosDispositivos);
 
 	for (int precisao = 0; precisao < PRECISAO_BALANCEAMENTO; precisao++)
 	{
-		cout << "Precisão: " << precisao << endl;
+		
 		// Computação.
 		for (int count = 0; count < todosDispositivos; count++)
 		{
-			cout << "Count: " << count << endl;
+			
 			if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength)
 			{
 				if ((simulacao % 2) == 0)
 				{
-					cout << "If " << count << endl;
+					
 					SetKernelAttribute(count - meusDispositivosOffset, kernelDispositivo[count], 0, SwapBufferDispositivo[count][0]);
 					SetKernelAttribute(count - meusDispositivosOffset, kernelDispositivo[count], 1, SwapBufferDispositivo[count][1]);
 				}
 				else
 				{
-					cout << "else " << count << endl;
+					
 					SetKernelAttribute(count - meusDispositivosOffset, kernelDispositivo[count], 0, SwapBufferDispositivo[count][1]);
 					SetKernelAttribute(count - meusDispositivosOffset, kernelDispositivo[count], 1, SwapBufferDispositivo[count][0]);
 				}
@@ -265,45 +277,48 @@ void Balanceador::PrecisaoBalanceamento(int simulacao)
 		}
 	}
 
-	// cout<<"Ticks"<<endl;
-	// // // Ticks.
-	// for (int count = 0; count < todosDispositivos; count++)
-	// {	cout<<count<<endl;
-	// 	if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength)
-	// 	{	cout<<"if"<<endl;
-	// 		SynchronizeCommandQueue(count - meusDispositivosOffset);
-	// 		cout<<"offset disp = "<<meusDispositivosOffset<<endl;
-	// 		ticks[count] += GetEventTaskTicks(count - meusDispositivosOffset, kernelEventoDispositivo[count]);
-	// 		cout<<"tick"<<endl;
-	// 	}
-	// }
+	
+	// // Ticks.
+	for (int count = 0; count < todosDispositivos; count++)
+	{	cout<<count<<endl;
+		if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength)
+		{	
+			SynchronizeCommandQueue(count - meusDispositivosOffset);
+			
+			ticks[count] += GetEventTaskTicks(count - meusDispositivosOffset, kernelEventoDispositivo[count]);
+			
+		}
+	}
 
 	// Reduzir ticks.
-	cout << "redução Ticks" << endl;
-	// long int ticks_root[todosDispositivos];
-	//  MPI_Allreduce(ticks, ticks_root, todosDispositivos, MPI_LONG, MPI_SUM, MPI_COMM_WORLD);
-	//  memcpy(ticks, ticks_root, sizeof(long int) * todosDispositivos);
-	//  ComputarCargas(ticks, cargasAntigas, cargasNovas, todosDispositivos);
-	//  cout<<"getFrequency"<<endl;
-	//  for (int count = 0; count < todosDispositivos; count++)
-	//  {
-	//  	if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength)
-	//  	{
-	//  		SynchronizeCommandQueue(count - meusDispositivosOffset);
-	//  		tempos[count] = ((float)ticks[count]) / (((float)(GetMaxFrequency(count)) * PRECISAO_BALANCEAMENTO) * cargasNovas[count]);
-	//  	}
-	//  }
-	//  cout<<"reduce freq"<<endl;
-	//  float tempos_root[todosDispositivos];
-	//  MPI_Allreduce(tempos, tempos_root, todosDispositivos, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
-	//  memcpy(tempos, tempos_root, sizeof(float) * todosDispositivos);
+	
+	long int ticks_root[todosDispositivos];
+	 MPI_Allreduce(ticks, ticks_root, todosDispositivos, MPI_LONG, MPI_SUM, MPI_COMM_WORLD);
+	 memcpy(ticks, ticks_root, sizeof(long int) * todosDispositivos);
+	 ComputarCargas(ticks, cargasAntigas, cargasNovas, todosDispositivos);
+	 
+	 for (int count = 0; count < todosDispositivos; count++)
+	 {
+	 	if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength)
+	 	{
+	 		SynchronizeCommandQueue(count - meusDispositivosOffset);
+	 		tempos[count] = ticks[count] / (GetMaxFrequency(count) * PRECISAO_BALANCEAMENTO) / cargasNovas[count];
+			cout<<"Tempos: "<<tempos[count]<<" ";
+	 	}
+		cout<<endl;
+	 }
+	 
+	 double tempos_root[todosDispositivos];
+	 MPI_Allreduce(tempos, tempos_root, todosDispositivos, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+	 memcpy(tempos, tempos_root, sizeof(double) * todosDispositivos);
+	 cout<<"tempos_root: "<<tempos_root[0]<<endl;
 }
 /*
 void Balanceador::BalanceamentoDeCarga(int simulacao)
 {
 	double tempoInicioBalanceamento = MPI_Wtime();
 
-	PrecisaoBalanceamento(simulacao);
+	//PrecisaoBalanceamento(simulacao);
 
 	// Computar novas cargas.
 	localTempoCB;
@@ -422,7 +437,7 @@ void Balanceador::BalanceamentoDeCarga(int simulacao)
 		tempoBalanceamento += tempoFimBalanceamento - tempoInicioBalanceamento;
 	}
 }
-
+/*
 void Balanceador::Probing(int simulacao)
 {
 	// if (balanceamento && ((simulacao == 0) || (simulacao == 1) ))
@@ -602,7 +617,8 @@ void Balanceador::ComputaKernel(int simulacao)
 	}
 }
 */
-void Balanceador::DistribuicaoUniformeDeCarga()
+template<typename T, typename U>
+void Balanceador<T,U>::DistribuicaoUniformeDeCarga()
 {
 
 	for (int count = 0; count < todosDispositivos; count++)
@@ -612,3 +628,60 @@ void Balanceador::DistribuicaoUniformeDeCarga()
 		tempos[count] = 1;
 	}
 }
+
+template<typename T, typename U>
+T* Balanceador<T,U>::returnData(){
+
+Data[0] = (99.9);
+
+Data[10] = (99.9);
+return Data;
+
+
+}
+
+
+
+void Balancer::run_mult_step_balancer() {
+   
+    balanceamento = true;
+   
+
+    for (int simulacao = 0; simulacao < SIMULACOES; simulacao++) {
+        // Balanceamento de carga
+        if (balanceamento && ((simulacao == 0) || (simulacao == 1) || (simulacao % INTERVALO_BALANCEAMENTO == 0))) {
+            if (HABILITAR_ESTATICO)
+            if (simulacao > 1) {
+                balanceamento = false;
+            }
+            #endif
+
+            balanceamentoDeCarga(simulacao);
+        } else {
+            computacaoInterna(simulacao);
+            trocaDeBordas(simulacao);
+            computacaoDeBordas(simulacao);
+        }
+    }
+
+    MPI_Barrier(MPI_COMM_WORLD);
+
+    if (world_rank == 0) {
+        gettimeofday(&timeEnd, NULL);
+        printf("Overall ticks (1tick->1ms): %lu\n", (timeEnd.tv_sec - timeStart.tv_sec) * 1000000 + (timeEnd.tv_usec - timeStart.tv_usec));
+
+        if (HABILITAR_BENCHMARK){
+        printf("Internal computation (s): %f\n", tempoComputacaoInterna);
+        printf("Border swap time (s): %f\n", tempoTrocaBorda);
+        printf("Border computation time (s): %f\n", tempoComputacaoBorda);
+        printf("Balancing time (s): %f\n", tempoBalanceamento);
+        }
+
+        for (int count = 0; count < todosDispositivos; count++) {
+            printf("Tempo dispositivo (1tick->1nanosegundo) %i: %li\n", count, tempos[count]);
+        }
+    }
+
+    
+}
+

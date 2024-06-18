@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "Balanceador.h"
+#include "Balanceador.cpp"
 #include "OpenCLWrapper.h"
 
 using namespace std;
@@ -30,6 +31,32 @@ using namespace std;
 #define MALHA_DIMENSAO_CELULAS 8
 #define NUMERO_PARAMETROS_MALHA 9
 
+
+void LerPontosHIS(const float *malha, const int *parametrosMalha)
+{
+	for(unsigned int x = 0; x < parametrosMalha[COMPRIMENTO_GLOBAL_X]; x++)
+	{
+		for(unsigned int y = 0; y < parametrosMalha[COMPRIMENTO_GLOBAL_Y]; y++)
+		{
+			for(unsigned int z = 0; z < parametrosMalha[COMPRIMENTO_GLOBAL_Z]; z++)
+			{
+				if((CELULA_A * parametrosMalha[MALHA_DIMENSAO_CELULAS]) + (z * parametrosMalha[MALHA_DIMENSAO_POSICAO_Z]) + (y * parametrosMalha[MALHA_DIMENSAO_POSICAO_Y]) + (x *parametrosMalha[MALHA_DIMENSAO_POSICAO_X]) >= parametrosMalha[OFFSET_COMPUTACAO]*MALHA_TOTAL_CELULAS && (CELULA_A * parametrosMalha[MALHA_DIMENSAO_CELULAS]) + (z * parametrosMalha[MALHA_DIMENSAO_POSICAO_Z]) + (y * parametrosMalha[MALHA_DIMENSAO_POSICAO_Y]) + (x *parametrosMalha[MALHA_DIMENSAO_POSICAO_X]) < (parametrosMalha[OFFSET_COMPUTACAO]+parametrosMalha[LENGTH_COMPUTACAO])*MALHA_TOTAL_CELULAS)
+				{
+					printf("%f ", malha[(CELULA_A * parametrosMalha[MALHA_DIMENSAO_CELULAS]) + (z * parametrosMalha[MALHA_DIMENSAO_POSICAO_Z]) + (y * parametrosMalha[MALHA_DIMENSAO_POSICAO_Y]) + (x *parametrosMalha[MALHA_DIMENSAO_POSICAO_X])]);
+				}
+				else
+				{
+					printf("%f ", 0.0f);
+				}
+			}
+			printf("\n");
+		}
+	}
+}
+
+
+
+
 int main(int argc, char *argv[])
 {
 
@@ -37,11 +64,11 @@ int main(int argc, char *argv[])
 
 	(parametrosMalha)[0] = 0;
 	(parametrosMalha)[1] = 0;
-	(parametrosMalha)[2] = 20;
-	(parametrosMalha)[3] = 20;
-	(parametrosMalha)[4] = 20;
-	(parametrosMalha)[5] = 20 * 20 * 8;
-	(parametrosMalha)[6] = 20 * 8;
+	(parametrosMalha)[2] = 8;
+	(parametrosMalha)[3] = 8;
+	(parametrosMalha)[4] = 8;
+	(parametrosMalha)[5] = 8 * 8 * 8;
+	(parametrosMalha)[6] = 8 * 8;
 	(parametrosMalha)[7] = 8;
 	(parametrosMalha)[8] = 1;
 
@@ -74,17 +101,23 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	// int data[] = {1, 2, 3, 4, 5};
-	// int dataToKernel[] = {10, 20, 30, 40, 50}; // Dados de exemplo para DataToKernel
-	const size_t N = 20 * 20 * 20 * 8;
+	
+
+
+
+	const size_t N = 8 * 8 * 8 * 8;
 	const size_t Element_sz = sizeof(malha[0]);
 	const size_t div_size = 8 * sizeof(int);
 	cout << "N = " << N << endl;
 	cout << "Element_sz = " << Element_sz << endl;
 	cout << "Malha_sz = " << sizeof(malha[0]) * N << endl;
 	// Instanciando um objeto da classe Balanceador
-	Balanceador balancer(argc, argv, static_cast<void *>(malha), Element_sz, N, static_cast<void *>(parametrosMalha), div_size);
-
+	LerPontosHIS(malha, parametrosMalha);
+	Balanceador<float, int> balancer(argc, argv, malha, Element_sz, N, parametrosMalha, div_size);
+	
+	float *teste = balancer.returnData();
+	
+	LerPontosHIS(teste, parametrosMalha);
 	cout << "Fim do programa..." << endl;
 
 	return 0;

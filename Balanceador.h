@@ -7,6 +7,7 @@
 #include <sys/time.h>
 #include <string.h>
 
+template<typename T, typename U>
 class Balanceador
 {
 private:
@@ -22,8 +23,8 @@ private:
   float BALANCEAMENTO_THRESHOLD;
   bool HABILITAR_BENCHMARK;
 
-  void *Data;
-  void *DataToKernel;
+  T *Data;
+  U *DataToKernel;
 
   int todosDispositivos;
   double tempoInicio, tempoFim;
@@ -32,7 +33,7 @@ private:
   double tempoComputacaoBorda;
   double tempoBalanceamento;
 
-  void **SwapBuffer;
+  T **SwapBuffer;
   long int *ticks;
   double *tempos;
   float *cargasNovas;
@@ -79,9 +80,13 @@ private:
   void PrecisaoBalanceamento(int simulacao);
   void ExecutarBalanceamento();
   void InicializarLenghtOffset(unsigned int offsetComputacao, unsigned int lengthComputacao, int count);
-
+  
 public:
-  Balanceador(int argc, char *argv[], void *data, const size_t Element_sz, const unsigned long int N_Element, void *DTK, const size_t div_size);
+  Balanceador(int argc, char *argv[], T *data, const size_t Element_sz, const unsigned long int N_Element, U *DTK, const size_t div_size);
   ~Balanceador();
+  T* returnData();
 };
+
+
+
 #endif
