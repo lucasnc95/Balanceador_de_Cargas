@@ -429,16 +429,14 @@ using namespace std;
 	MPI_Allreduce(ticks, ticks_root, todosDispositivos, MPI_LONG, MPI_SUM, MPI_COMM_WORLD);
 	memcpy(ticks, ticks_root, sizeof(long int) * todosDispositivos);
 	ComputarCargas(ticks, cargasAntigas, cargasNovas, todosDispositivos);
-	cout<<"getFrequency"<<endl;
 	for (int count = 0; count < todosDispositivos; count++)
 	{
 		if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength)
 	 	{
 	 		SynchronizeCommandQueue(count - meusDispositivosOffset);
-	 		tempos[count] = ((float)ticks[count]) / (((float)(GetMaxFrequency(count)) * PRECISAO_BALANCEAMENTO) * cargasNovas[count]);
+	 		tempos[count] = ((float)ticks[count]) / ((float)cargasNovas[count]);
 	 	}
 	}
-	cout<<"reduce freq"<<endl;
 	float tempos_root[todosDispositivos];
 	MPI_Allreduce(tempos, tempos_root, todosDispositivos, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
 	memcpy(tempos, tempos_root, sizeof(float) * todosDispositivos);
