@@ -40,7 +40,7 @@ private:
     const unsigned long int units_per_elements;
     T *Data;
     U *DataToKernel;
-    T **SwapBuffer;
+    T **swapBuffer;
     std::string kernelName;
     std::string functionName;
     long int *ticks;
@@ -151,9 +151,9 @@ Balanceador<T,U>::Balanceador(int argc, char *argv[], T *data, const size_t Elem
     DataToKernel = new U;
     memcpy(DataToKernel, DTK, DataToKernel_Size);
 
-    SwapBuffer = new T *[2];
-    SwapBuffer[0] = new T[(Element_sz * N_Element)];
-    SwapBuffer[1] = new T[(Element_sz * N_Element)];
+    swapBuffer = new T *[2];
+    swapBuffer[0] = new T[(Element_sz * N_Element * units_per_elements)];
+    swapBuffer[1] = new T[(Element_sz * N_Element * units_per_elements)];
 
     ticks = new long int[todosDispositivos];
     tempos = new double[todosDispositivos];
@@ -369,8 +369,8 @@ void Balanceador<T,U>::InicializaDispositivos() {
             WriteToMemoryObject(count - meusDispositivosOffset, DataToKernelDispositivo[count], (char *)DataToKernel, 0, DataToKernel_Size);
             SynchronizeCommandQueue(count - meusDispositivosOffset);
             tempoInicio = MPI_Wtime();
-            WriteToMemoryObject(count - meusDispositivosOffset, swapBufferDispositivo[count][0], (char *)SwapBuffer[0], 0, sizeCarga);
-            WriteToMemoryObject(count - meusDispositivosOffset, swapBufferDispositivo[count][1], (char *)SwapBuffer[1], 0, sizeCarga);
+            WriteToMemoryObject(count - meusDispositivosOffset, swapBufferDispositivo[count][0], (char *)swapBuffer[0], 0, sizeCarga);
+            WriteToMemoryObject(count - meusDispositivosOffset, swapBufferDispositivo[count][1], (char *)swapBuffer[1], 0, sizeCarga);
             double aux = (MPI_Wtime() - tempoInicio) / sizeCarga / 2;
             localWriteByte = aux > localWriteByte ? aux : localWriteByte;
             kernelDispositivo[count] = CreateKernel(count - meusDispositivosOffset, kernelName, functionName);
@@ -474,7 +474,7 @@ void Balanceador<T,U>::BalanceamentoDeCarga(int simulacao) {
                         if (RecuperarPosicaoHistograma(dispositivosWorld, world_size, count) != RecuperarPosicaoHistograma(dispositivosWorld, world_size, count2)) {
                             int overlap[2];
                             int alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, count2);
-                            T *data = (simulacao % 2) == 0 ? SwapBuffer[0] : SwapBuffer[1];
+                            T *data = (simulacao % 2) == 0 ? swapBuffer[0] : swapBuffer[1];
                             int dataDevice = (simulacao % 2) == 0 ? swapBufferDispositivo[count][0] : swapBufferDispositivo[count][1];
                             MPI_Recv(overlap, 2, MPI_INT, alvo, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
                             if (overlap[1] > 0) {
@@ -494,7 +494,7 @@ void Balanceador<T,U>::BalanceamentoDeCarga(int simulacao) {
                         if ((overlapAntigoOffset <= overlapNovoOffset - interv_balance && ComputarIntersecao(overlapAntigoOffset, overlapAntigoLength, overlapNovoOffset - interv_balance, overlapNovoLength + interv_balance, &intersecaoOffset, &intersecaoLength)) ||
                             (overlapAntigoOffset > overlapNovoOffset - interv_balance && ComputarIntersecao(overlapNovoOffset - interv_balance, overlapNovoLength + interv_balance, overlapAntigoOffset, overlapAntigoLength, &intersecaoOffset, &intersecaoLength))) {
                             if (count2 >= meusDispositivosOffset && count2 < meusDispositivosOffset + meusDispositivosLength) {
-                                T *data = (simulacao % 2) == 0 ? SwapBuffer[0] : SwapBuffer[1];
+                                T *data = (simulacao % 2) == 0 ? swapBuffer[0] : swapBuffer[1];
                                 int dataDevice[2] = {(simulacao % 2) == 0 ? swapBufferDispositivo[count][0] : swapBufferDispositivo[count][1],
                                                      (simulacao % 2) == 0 ? swapBufferDispositivo[count2][0] : swapBufferDispositivo[count2][1]};
 
@@ -506,7 +506,7 @@ void Balanceador<T,U>::BalanceamentoDeCarga(int simulacao) {
                                 if (RecuperarPosicaoHistograma(dispositivosWorld, world_size, count) != RecuperarPosicaoHistograma(dispositivosWorld, world_size, count2)) {
                                     int overlap[2] = {intersecaoOffset, intersecaoLength};
                                     int alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, count2);
-                                    T *data = (simulacao % 2) == 0 ? SwapBuffer[0] : SwapBuffer[1];
+                                    T *data = (simulacao % 2) == 0 ? swapBuffer[0] : swapBuffer[1];
                                     int dataDevice = (simulacao % 2) == 0 ? swapBufferDispositivo[count][0] : swapBufferDispositivo[count][1];
                                     MPI_Send(overlap, 2, MPI_INT, alvo, 0, MPI_COMM_WORLD);
                                     MPI_Recv(data + overlap[0] * Element_size, overlap[1] * Element_size, custom_type_set ? mpi_custom_type : mpi_data_type, alvo, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
@@ -518,7 +518,7 @@ void Balanceador<T,U>::BalanceamentoDeCarga(int simulacao) {
                             if (RecuperarPosicaoHistograma(dispositivosWorld, world_size, count) != RecuperarPosicaoHistograma(dispositivosWorld, world_size, count2)) {
                                 int overlap[2] = {0, 0};
                                 int alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, count2);
-                                T *data = (simulacao % 2) == 0 ? SwapBuffer[0] : SwapBuffer[1];
+                                T *data = (simulacao % 2) == 0 ? swapBuffer[0] : swapBuffer[1];
                                 MPI_Send(overlap, 2, MPI_INT, alvo, 0, MPI_COMM_WORLD);
                             }
                         }
@@ -564,7 +564,7 @@ void Balanceador<T,U>::TrocaDeBordas(int simulacao) {
 
                 if (passo == 3) {
                     if (count == meusDispositivosOffset && count > 0) {
-                        data = (simulacao % 2) == 0 ? SwapBuffer[0] : SwapBuffer[1];
+                        data = (simulacao % 2) == 0 ? swapBuffer[0] : swapBuffer[1];
                         dataDevice[0] = (simulacao % 2) == 0 ? swapBufferDispositivo[count][0] : swapBufferDispositivo[count][1];
                         borda[0] = offset[count] - tamanhoBorda;
                         borda[0] = borda[0] < 0 ? 0 : borda[0];
@@ -583,7 +583,7 @@ void Balanceador<T,U>::TrocaDeBordas(int simulacao) {
                         }
                     }
                     if (count == meusDispositivosOffset + meusDispositivosLength - 1 && count < todosDispositivos - 1) {
-                        data = (simulacao % 2) == 0 ? SwapBuffer[0] : SwapBuffer[1];
+                        data = (simulacao % 2) == 0 ? swapBuffer[0] : swapBuffer[1];
                         dataDevice[0] = (simulacao % 2) == 0 ? swapBufferDispositivo[count][0] : swapBufferDispositivo[count][1];
                         borda[0] = (offset[count] + length[count]) - tamanhoBorda;
                         borda[0] = borda[0] < 0 ? 0 : borda[0];
@@ -605,7 +605,7 @@ void Balanceador<T,U>::TrocaDeBordas(int simulacao) {
 
                 if (passo == 2) {
                     if (count == meusDispositivosOffset && count > 0) {
-                        data = (simulacao % 2) == 0 ? SwapBuffer[0] : SwapBuffer[1];
+                        data = (simulacao % 2) == 0 ? swapBuffer[0] : swapBuffer[1];
                         dataDevice[0] = (simulacao % 2) == 0 ? swapBufferDispositivo[count][0] : swapBufferDispositivo[count][1];
                         borda[0] = offset[count] - tamanhoBorda;
                         borda[0] = borda[0] < 0 ? 0 : borda[0];
@@ -624,7 +624,7 @@ void Balanceador<T,U>::TrocaDeBordas(int simulacao) {
                         }
                     }
                     if (count == meusDispositivosOffset + meusDispositivosLength - 1 && count < todosDispositivos - 1) {
-                        data = (simulacao % 2) == 0 ? SwapBuffer[0] : SwapBuffer[1];
+                        data = (simulacao % 2) == 0 ? swapBuffer[0] : swapBuffer[1];
                         dataDevice[0] = (simulacao % 2) == 0 ? swapBufferDispositivo[count][0] : swapBufferDispositivo[count][1];
                         borda[0] = (offset[count] + length[count]) - tamanhoBorda;
                         borda[0] = borda[0] < 0 ? 0 : borda[0];
@@ -645,7 +645,7 @@ void Balanceador<T,U>::TrocaDeBordas(int simulacao) {
                 }
 
                 if (passo == 0 && count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength - 1) {
-                    data = (simulacao % 2) == 0 ? SwapBuffer[0] : SwapBuffer[1];
+                    data = (simulacao % 2) == 0 ? swapBuffer[0] : swapBuffer[1];
                     dataDevice[0] = (simulacao % 2) == 0 ? swapBufferDispositivo[count + 0][0] : swapBufferDispositivo[count + 0][1];
                     dataDevice[1] = (simulacao % 2) == 0 ? swapBufferDispositivo[count + 1][0] : swapBufferDispositivo[count + 1][1];
                     borda[0] = offset[count + 1] - tamanhoBorda;
@@ -660,7 +660,7 @@ void Balanceador<T,U>::TrocaDeBordas(int simulacao) {
                 }
 
                 if (passo == 1 && count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength - 1) {
-                    data = (simulacao % 2) == 0 ? SwapBuffer[0] : SwapBuffer[1];
+                    data = (simulacao % 2) == 0 ? swapBuffer[0] : swapBuffer[1];
                     dataDevice[0] = (simulacao % 2) == 0 ? swapBufferDispositivo[count + 0][0] : swapBufferDispositivo[count + 0][1];
                     dataDevice[1] = (simulacao % 2) == 0 ? swapBufferDispositivo[count + 1][0] : swapBufferDispositivo[count + 1][1];
                     borda[0] = offset[count + 1] - tamanhoBorda;
@@ -713,19 +713,19 @@ void Balanceador<T,U>::Probing(int simulacao)
 					{
 						int overlap[2];
 						int alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, count2);
-						float *malha = ((simulacao % 2) == 0) ? malhaSwapBuffer[0] : malhaSwapBuffer[1];
-						int malhaDevice = ((simulacao % 2) == 0) ? malhaSwapBufferDispositivo[count][0] : malhaSwapBufferDispositivo[count][1];
+						float *Data = ((simulacao % 2) == 0) ? swapBuffer[0] : swapBuffer[1];
+						int dataDevice = ((simulacao % 2) == 0) ? swapBufferDispositivo[count][0] : swapBufferDispositivo[count][1];
 						MPI_Recv(overlap, 2, MPI_INT, alvo, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 						// Podem ocorrer requisicoes vazias.
 						if (overlap[1] > 0)
 						{
-							ReadFromMemoryObject(count - meusDispositivosOffset, malhaDevice, (char *)(malha + (overlap[0] * units_per_elements)), overlap[0] * units_per_elements * sizeof(float), overlap[1] * units_per_elements * sizeof(float));
+							ReadFromMemoryObject(count - meusDispositivosOffset, dataDevice, (char *)(Data + (overlap[0] * units_per_elements)), overlap[0] * units_per_elements * sizeof(float), overlap[1] * units_per_elements * sizeof(float));
 							SynchronizeCommandQueue(count - meusDispositivosOffset);
 
 							sizeCarga = overlap[1] * units_per_elements;
 
 							double tempoInicioBanda = MPI_Wtime();
-							MPI_Ssend(malha + (overlap[0] * units_per_elements), sizeCarga, MPI_FLOAT, alvo, 0, MPI_COMM_WORLD);
+							MPI_Ssend(Data + (overlap[0] * units_per_elements), sizeCarga, MPI_FLOAT, alvo, 0, MPI_COMM_WORLD);
 							double aux = (MPI_Wtime() - tempoInicioBanda) / sizeCarga;
 							localBanda = aux > localBanda ? aux : localBanda;
 						}
@@ -745,15 +745,15 @@ void Balanceador<T,U>::Probing(int simulacao)
 					{
 						if (count2 >= meusDispositivosOffset && count2 < meusDispositivosOffset + meusDispositivosLength)
 						{
-							float *malha = ((simulacao % 2) == 0) ? malhaSwapBuffer[0] : malhaSwapBuffer[1];
+							float *Data = ((simulacao % 2) == 0) ? swapBuffer[0] : swapBuffer[1];
 
-							int malhaDevice[2] = {((simulacao % 2) == 0) ? malhaSwapBufferDispositivo[count][0] : malhaSwapBufferDispositivo[count][1],
-																		((simulacao % 2) == 0) ? malhaSwapBufferDispositivo[count2][0] : malhaSwapBufferDispositivo[count2][1]};
+							int dataDevice[2] = {((simulacao % 2) == 0) ? swapBufferDispositivo[count][0] : swapBufferDispositivo[count][1],
+																		((simulacao % 2) == 0) ? swapBufferDispositivo[count2][0] : swapBufferDispositivo[count2][1]};
 
-							ReadFromMemoryObject(count2 - meusDispositivosOffset, malhaDevice[1], (char *)(malha + (intersecaoOffset * units_per_elements)), intersecaoOffset * units_per_elements * sizeof(float), intersecaoLength * units_per_elements * sizeof(float));
+							ReadFromMemoryObject(count2 - meusDispositivosOffset, dataDevice[1], (char *)(Data + (intersecaoOffset * units_per_elements)), intersecaoOffset * units_per_elements * sizeof(float), intersecaoLength * units_per_elements * sizeof(float));
 							SynchronizeCommandQueue(count2 - meusDispositivosOffset);
 
-							WriteToMemoryObject(count - meusDispositivosOffset, malhaDevice[0], (char *)(malha + (intersecaoOffset * units_per_elements)), intersecaoOffset * units_per_elements * sizeof(float), intersecaoLength * units_per_elements * sizeof(float));
+							WriteToMemoryObject(count - meusDispositivosOffset, dataDevice[0], (char *)(Data + (intersecaoOffset * units_per_elements)), intersecaoOffset * units_per_elements * sizeof(float), intersecaoLength * units_per_elements * sizeof(float));
 							SynchronizeCommandQueue(count - meusDispositivosOffset);
 						}
 						else
@@ -763,17 +763,17 @@ void Balanceador<T,U>::Probing(int simulacao)
 							{
 								int overlap[2] = {intersecaoOffset, intersecaoLength};
 								int alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, count2);
-								float *malha = ((simulacao % 2) == 0) ? malhaSwapBuffer[0] : malhaSwapBuffer[1];
-								int malhaDevice = ((simulacao % 2) == 0) ? malhaSwapBufferDispositivo[count][0] : malhaSwapBufferDispositivo[count][1];
+								float *Data = ((simulacao % 2) == 0) ? swapBuffer[0] : swapBuffer[1];
+								int dataDevice = ((simulacao % 2) == 0) ? swapBufferDispositivo[count][0] : swapBufferDispositivo[count][1];
 								SynchronizeCommandQueue(count - meusDispositivosOffset);
 								double tempoInicioLatencia = MPI_Wtime();
 								MPI_Ssend(overlap, 2, MPI_INT, alvo, 0, MPI_COMM_WORLD);
 								double aux = (MPI_Wtime() - tempoInicioLatencia) / 2;
 								localLatencia = aux > localLatencia ? aux : localLatencia;
 
-								MPI_Recv(malha + (overlap[0] * units_per_elements), overlap[1] * units_per_elements, MPI_FLOAT, alvo, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+								MPI_Recv(Data + (overlap[0] * units_per_elements), overlap[1] * units_per_elements, MPI_FLOAT, alvo, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
-								WriteToMemoryObject(count - meusDispositivosOffset, malhaDevice, (char *)(malha + (overlap[0] * units_per_elements)), overlap[0] * units_per_elements * sizeof(float), overlap[1] * units_per_elements * sizeof(float));
+								WriteToMemoryObject(count - meusDispositivosOffset, dataDevice, (char *)(Data + (overlap[0] * units_per_elements)), overlap[0] * units_per_elements * sizeof(float), overlap[1] * units_per_elements * sizeof(float));
 								SynchronizeCommandQueue(count - meusDispositivosOffset);
 							}
 						}
@@ -785,17 +785,17 @@ void Balanceador<T,U>::Probing(int simulacao)
 						{
 							int overlap[2] = {0, 0};
 							int alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, count2);
-							float *malha = ((simulacao % 2) == 0) ? malhaSwapBuffer[0] : malhaSwapBuffer[1];
+							float *Data = ((simulacao % 2) == 0) ? swapBuffer[0] : swapBuffer[1];
 							MPI_Send(overlap, 2, MPI_INT, alvo, 0, MPI_COMM_WORLD);
 						}
 					}
 				}
 			}
 
-			parametrosMalha[count][OFFSET_COMPUTACAO] = overlapNovoOffset;
-			parametrosMalha[count][LENGTH_COMPUTACAO] = overlapNovoLength;
+			offset[count] = overlapNovoOffset;
+			length[count]= overlapNovoLength;
 
-			WriteToMemoryObject(count - meusDispositivosOffset, parametrosMalhaDispositivo[count], (char *)parametrosMalha[count], 0, sizeof(int) * NUMERO_PARAMETROS_MALHA);
+			WriteToMemoryObject(count - meusDispositivosOffset, parametrosMalhaDispositivo[count], (char *)parametrosMalha[count], 0, DataToKernel_Size);
 			SynchronizeCommandQueue(count - meusDispositivosOffset);
 		}
 	}
