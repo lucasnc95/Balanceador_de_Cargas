@@ -437,7 +437,7 @@ void Balanceador::BalanceamentoDeCarga(int simulacao)
 		tempoBalanceamento += tempoFimBalanceamento - tempoInicioBalanceamento;
 	}
 }
-/*
+
 void Balanceador::Probing(int simulacao)
 {
 	// if (balanceamento && ((simulacao == 0) || (simulacao == 1) ))
