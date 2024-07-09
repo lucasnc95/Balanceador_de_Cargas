@@ -99,7 +99,7 @@ public:
     float ComputarNorma(const float *cargasAntigas, const float *cargasNovas, int participantes);
     inline void InicializarLenghtOffset(unsigned int offsetComputacao, unsigned int lengthComputacao, int count);
     void computacaoInterna(int simulacao); 
-    void setKernelAdress(const std::string _kernelName, const std::string _functionName);
+    void setKernel(const std::string _kernelName, const std::string _functionName);
     void run_multi_step_balancer();
 };
 
@@ -270,72 +270,14 @@ float Balanceador<T,U>::ComputarNorma(const float *cargasAntigas, const float *c
 }
 
 template<typename T, typename U>
-void Balanceador<T,U>::setKernelAdress(const std::string _kernelName, const std::string _functionName)
+void Balanceador<T,U>::setKernel(const std::string _kernelName, const std::string _functionName)
 {
     kernelName = _kernelName;
     functionName = _functionName;
     kernel_set = true;
 }
 
-/*template<typename T, typename U>
-void Balanceador<T,U>::ComputaKernel(int simulacao)
-{
 
-	tempoInicio = MPI_Wtime();
-
-	// Computação interna.
-	for (int count = 0; count < todosDispositivos; count++)
-	{
-		if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength)
-		{
-			kernelEventoDispositivo[count] = RunKernel(count - meusDispositivosOffset, kernelDispositivo[count], offset[count]+ interv_balance, length[count] - interv_balance, isDeviceCPU(count - meusDispositivosOffset) ? CPU_WORK_GROUP_SIZE : GPU_WORK_GROUP_SIZE);
-		}
-	}
-
-	// Sincronizacao da computação interna.
-	for (int count = 0; count < todosDispositivos; count++)
-	{
-		if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength)
-		{
-			SynchronizeCommandQueue(count - meusDispositivosOffset);
-            ticks[count] += GetEventTaskTicks(count - meusDispositivosOffset, kernelEventoDispositivo[count]);
-		}
-	}
-
-	MPI_Barrier(MPI_COMM_WORLD);
-	tempoComputacaoInterna += MPI_Wtime() - tempoInicio;
-
-	// Computação das bordas.
-	for (int count = 0; count < todosDispositivos; count++)
-	{
-		if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength)
-		{
-			if ((simulacao % 2) == 0)
-			{
-				SetKernelAttribute(count - meusDispositivosOffset, kernelDispositivo[count], 0, swapBufferDispositivo[count][0]);
-				SetKernelAttribute(count - meusDispositivosOffset, kernelDispositivo[count], 1, swapBufferDispositivo[count][1]);
-			}
-			else
-			{
-				SetKernelAttribute(count - meusDispositivosOffset, kernelDispositivo[count], 0, swapBufferDispositivo[count][1]);
-				SetKernelAttribute(count - meusDispositivosOffset, kernelDispositivo[count], 1, swapBufferDispositivo[count][0]);
-			}
-
-			RunKernel(count - meusDispositivosOffset, kernelDispositivo[count], offset[count], interv_balance, isDeviceCPU(count - meusDispositivosOffset) ? CPU_WORK_GROUP_SIZE : GPU_WORK_GROUP_SIZE);
-			RunKernel(count - meusDispositivosOffset, kernelDispositivo[count], offset[count] + length[count] - interv_balance, interv_balance, isDeviceCPU(count - meusDispositivosOffset) ? CPU_WORK_GROUP_SIZE : GPU_WORK_GROUP_SIZE);
-		}
-	}
-
-	// Sincronizacao da computação das borda
-	for (int count = 0; count < todosDispositivos; count++)
-	{
-		if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength)
-		{
-			SynchronizeCommandQueue(count - meusDispositivosOffset);
-		}
-	}
-}
-*/
 template<typename T, typename U>
 inline void Balanceador<T,U>::InicializarLenghtOffset(unsigned int offsetComputacao, unsigned int lengthComputacao, int count)
 {
@@ -551,137 +493,6 @@ void Balanceador<T,U>::DistribuicaoUniformeDeCarga() {
 }
 
 
-template<typename T, typename U>
-void Balanceador<T,U>::TrocaDeBordas(int simulacao) {
-    for (int passo = 0; passo < 4; passo++) {
-        for (int count = 0; count < todosDispositivos; count++) {
-            if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength) {
-                int tamanhoBorda = interv_balance;
-                T *data;
-                int dataDevice[2];
-                int borda[2];
-                int alvo;
-
-                if (passo == 3) {
-                    if (count == meusDispositivosOffset && count > 0) {
-                        data = (simulacao % 2) == 0 ? swapBuffer[0] : swapBuffer[1];
-                        dataDevice[0] = (simulacao % 2) == 0 ? swapBufferDispositivo[count][0] : swapBufferDispositivo[count][1];
-                        borda[0] = offset[count] - tamanhoBorda;
-                        borda[0] = borda[0] < 0 ? 0 : borda[0];
-                        borda[1] = offset[count];
-                        alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, count - 1);
-
-                        if (alvo % 2 == 0) {
-                            MPI_Irecv(data + borda[0] * Element_size, tamanhoBorda * Element_size, custom_type_set ? mpi_custom_type : mpi_data_type, alvo, 0, MPI_COMM_WORLD, &receiveRequest);
-                            dataEventoDispositivo[count] = ReadFromMemoryObject(count - meusDispositivosOffset, dataDevice[0], (char *)(data + borda[1] * Element_size), borda[1] * Element_size * sizeof(float), tamanhoBorda * Element_size * sizeof(float));
-                            SynchronizeCommandQueue(count - meusDispositivosOffset);
-                            MPI_Isend(data + borda[1] * Element_size, tamanhoBorda * Element_size, custom_type_set ? mpi_custom_type : mpi_data_type, alvo, 0, MPI_COMM_WORLD, &sendRequest);
-                            MPI_Wait(&sendRequest, MPI_STATUS_IGNORE);
-                            MPI_Wait(&receiveRequest, MPI_STATUS_IGNORE);
-                            WriteToMemoryObject(count - meusDispositivosOffset, dataDevice[0], (char *)(data + borda[0] * Element_size), borda[0] * Element_size * sizeof(float), tamanhoBorda * Element_size * sizeof(float));
-                            SynchronizeCommandQueue(count - meusDispositivosOffset);
-                        }
-                    }
-                    if (count == meusDispositivosOffset + meusDispositivosLength - 1 && count < todosDispositivos - 1) {
-                        data = (simulacao % 2) == 0 ? swapBuffer[0] : swapBuffer[1];
-                        dataDevice[0] = (simulacao % 2) == 0 ? swapBufferDispositivo[count][0] : swapBufferDispositivo[count][1];
-                        borda[0] = (offset[count] + length[count]) - tamanhoBorda;
-                        borda[0] = borda[0] < 0 ? 0 : borda[0];
-                        borda[1] = offset[count] + length[count];
-                        alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, count + 1);
-
-                        if (alvo % 2 == 1) {
-                            dataEventoDispositivo[count] = ReadFromMemoryObject(count - meusDispositivosOffset, dataDevice[0], (char *)(data + borda[1] * Element_size), borda[1] * Element_size * sizeof(float), tamanhoBorda * Element_size * sizeof(float));
-                            SynchronizeCommandQueue(count - meusDispositivosOffset);
-                            MPI_Isend(data + borda[1] * Element_size, tamanhoBorda * Element_size, custom_type_set ? mpi_custom_type : mpi_data_type, alvo, 0, MPI_COMM_WORLD, &sendRequest);
-                            MPI_Irecv(data + borda[0] * Element_size, tamanhoBorda * Element_size, custom_type_set ? mpi_custom_type : mpi_data_type, alvo, 0, MPI_COMM_WORLD, &receiveRequest);
-                            MPI_Wait(&sendRequest, MPI_STATUS_IGNORE);
-                            MPI_Wait(&receiveRequest, MPI_STATUS_IGNORE);
-                            WriteToMemoryObject(count - meusDispositivosOffset, dataDevice[0], (char *)(data + borda[0] * Element_size), borda[0] * Element_size * sizeof(float), tamanhoBorda * Element_size * sizeof(float));
-                            SynchronizeCommandQueue(count - meusDispositivosOffset);
-                        }
-                    }
-                }
-
-                if (passo == 2) {
-                    if (count == meusDispositivosOffset && count > 0) {
-                        data = (simulacao % 2) == 0 ? swapBuffer[0] : swapBuffer[1];
-                        dataDevice[0] = (simulacao % 2) == 0 ? swapBufferDispositivo[count][0] : swapBufferDispositivo[count][1];
-                        borda[0] = offset[count] - tamanhoBorda;
-                        borda[0] = borda[0] < 0 ? 0 : borda[0];
-                        borda[1] = offset[count];
-                        alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, count - 1);
-
-                        if (alvo % 2 == 1) {
-                            MPI_Irecv(data + borda[0] * Element_size, tamanhoBorda * Element_size, custom_type_set ? mpi_custom_type : mpi_data_type, alvo, 0, MPI_COMM_WORLD, &receiveRequest);
-                            dataEventoDispositivo[count] = ReadFromMemoryObject(count - meusDispositivosOffset, dataDevice[0], (char *)(data + borda[1] * Element_size), borda[1] * Element_size * sizeof(float), tamanhoBorda * Element_size * sizeof(float));
-                            SynchronizeCommandQueue(count - meusDispositivosOffset);
-                            MPI_Isend(data + borda[1] * Element_size, tamanhoBorda * Element_size, custom_type_set ? mpi_custom_type : mpi_data_type, alvo, 0, MPI_COMM_WORLD, &sendRequest);
-                            MPI_Wait(&sendRequest, MPI_STATUS_IGNORE);
-                            MPI_Wait(&receiveRequest, MPI_STATUS_IGNORE);
-                            WriteToMemoryObject(count - meusDispositivosOffset, dataDevice[0], (char *)(data + borda[0] * Element_size), borda[0] * Element_size * sizeof(float), tamanhoBorda * Element_size * sizeof(float));
-                            SynchronizeCommandQueue(count - meusDispositivosOffset);
-                        }
-                    }
-                    if (count == meusDispositivosOffset + meusDispositivosLength - 1 && count < todosDispositivos - 1) {
-                        data = (simulacao % 2) == 0 ? swapBuffer[0] : swapBuffer[1];
-                        dataDevice[0] = (simulacao % 2) == 0 ? swapBufferDispositivo[count][0] : swapBufferDispositivo[count][1];
-                        borda[0] = (offset[count] + length[count]) - tamanhoBorda;
-                        borda[0] = borda[0] < 0 ? 0 : borda[0];
-                        borda[1] = offset[count] + length[count];
-                        alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, count + 1);
-
-                        if (alvo % 2 == 0) {
-                            dataEventoDispositivo[count] = ReadFromMemoryObject(count - meusDispositivosOffset, dataDevice[0], (char *)(data + borda[1] * Element_size), borda[1] * Element_size * sizeof(float), tamanhoBorda * Element_size * sizeof(float));
-                            SynchronizeCommandQueue(count - meusDispositivosOffset);
-                            MPI_Isend(data + borda[1] * Element_size, tamanhoBorda * Element_size, custom_type_set ? mpi_custom_type : mpi_data_type, alvo, 0, MPI_COMM_WORLD, &sendRequest);
-                            MPI_Irecv(data + borda[0] * Element_size, tamanhoBorda * Element_size, custom_type_set ? mpi_custom_type : mpi_data_type, alvo, 0, MPI_COMM_WORLD, &receiveRequest);
-                            MPI_Wait(&sendRequest, MPI_STATUS_IGNORE);
-                            MPI_Wait(&receiveRequest, MPI_STATUS_IGNORE);
-                            WriteToMemoryObject(count - meusDispositivosOffset, dataDevice[0], (char *)(data + borda[0] * Element_size), borda[0] * Element_size * sizeof(float), tamanhoBorda * Element_size * sizeof(float));
-                            SynchronizeCommandQueue(count - meusDispositivosOffset);
-                        }
-                    }
-                }
-
-                if (passo == 0 && count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength - 1) {
-                    data = (simulacao % 2) == 0 ? swapBuffer[0] : swapBuffer[1];
-                    dataDevice[0] = (simulacao % 2) == 0 ? swapBufferDispositivo[count + 0][0] : swapBufferDispositivo[count + 0][1];
-                    dataDevice[1] = (simulacao % 2) == 0 ? swapBufferDispositivo[count + 1][0] : swapBufferDispositivo[count + 1][1];
-                    borda[0] = offset[count + 1] - tamanhoBorda;
-                    borda[0] = borda[0] < 0 ? 0 : borda[0];
-                    borda[1] = offset[count + 1];
-
-                    dataEventoDispositivo[count + 0] = ReadFromMemoryObject(count + 0 - meusDispositivosOffset, dataDevice[0], (char *)(data + borda[0] * Element_size), borda[0] * Element_size * sizeof(float), tamanhoBorda * Element_size * sizeof(float));
-                    SynchronizeCommandQueue(count + 0 - meusDispositivosOffset);
-
-                    dataEventoDispositivo[count + 1] = ReadFromMemoryObject(count + 1 - meusDispositivosOffset, dataDevice[1], (char *)(data + borda[1] * Element_size), borda[1] * Element_size * sizeof(float), tamanhoBorda * Element_size * sizeof(float));
-                    SynchronizeCommandQueue(count + 1 - meusDispositivosOffset);
-                }
-
-                if (passo == 1 && count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength - 1) {
-                    data = (simulacao % 2) == 0 ? swapBuffer[0] : swapBuffer[1];
-                    dataDevice[0] = (simulacao % 2) == 0 ? swapBufferDispositivo[count + 0][0] : swapBufferDispositivo[count + 0][1];
-                    dataDevice[1] = (simulacao % 2) == 0 ? swapBufferDispositivo[count + 1][0] : swapBufferDispositivo[count + 1][1];
-                    borda[0] = offset[count + 1] - tamanhoBorda;
-                    borda[0] = borda[0] < 0 ? 0 : borda[0];
-                    borda[1] = offset[count + 1];
-
-                    WriteToMemoryObject(count + 0 - meusDispositivosOffset, dataDevice[0], (char *)(data + borda[1] * Element_size), borda[1] * Element_size * sizeof(float), tamanhoBorda * Element_size * sizeof(float));
-                    SynchronizeCommandQueue(count + 0 - meusDispositivosOffset);
-                    WriteToMemoryObject(count + 1 - meusDispositivosOffset, dataDevice[1], (char *)(data + borda[0] * Element_size), borda[0] * Element_size * sizeof(float), tamanhoBorda * Element_size * sizeof(float));
-                    SynchronizeCommandQueue(count + 1 - meusDispositivosOffset);
-                }
-            }
-        }
-    }
-
-    for (int count = 0; count < todosDispositivos; count++) {
-        if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength) {
-            SynchronizeCommandQueue(count - meusDispositivosOffset);
-        }
-    }
-}
 
 
 
@@ -875,26 +686,6 @@ void Balanceador<T,U>::computacaoDeBordas(int simulacao) {
 
 
 
-template<typename T, typename U>
-void Balanceador<T,U>::run_dinamic_multi_step_balancer(long int steps, long int balance_interval){
-
-bool balanceamento = true;
-int SIMULACOES = steps;    
-int INTERVALO_BALANCEAMENTO  = balance_interval;
-
-    for (int simulacao = 0; simulacao < SIMULACOES; simulacao++) {
-        
-        if (balanceamento && ((simulacao == 0) || (simulacao == 1) || (simulacao % INTERVALO_BALANCEAMENTO == 0))) {
-            BalanceamentoDeCarga(simulacao);
-        } else {
-            computacaoInterna(simulacao);
-            TrocaDeBordas(simulacao);
-            computacaoDeBordas(simulacao);
-        }
-    }
-
-    
-    }
 
 
 

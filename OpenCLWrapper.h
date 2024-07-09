@@ -8,6 +8,8 @@
 #include <CL/cl_gl.h>
 #endif
 
+
+
 int InitParallelProcessor(); // Returns number of devices.
 void FinishParallelProcessor();
 

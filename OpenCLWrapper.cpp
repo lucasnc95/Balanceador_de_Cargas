@@ -3,16 +3,17 @@
 #include <mpi.h>
 
 #include "OpenCLWrapper.h"
-// #define MAX_NUMBER_OF_DEVICES_PER_PLATFORM 100
-#define MAX_SOURCE_BUFFER_LENGTH 1000000
-#define MAX_NUMBER_OF_PLATFORMS 10
-#define MAX_NUMBER_OF_DEVICES 10
-#define MAX_NUMBER_OF_DEVICES_PER_PLATFORM 10
-#define MAX_MEMORY_OBJECTS 100
-#define MAX_KERNELS 100
-#define MAX_EVENTS 1000
 
-cl_platform_id platformIDs[MAX_NUMBER_OF_PLATFORMS];
+
+cl_platform_id platformIDs[10];
+
+long int MAX_SOURCE_BUFFER_LENGTH = 1000000;
+long int MAX_NUMBER_OF_PLATFORMS = 10;
+long int MAX_NUMBER_OF_DEVICES = 10;
+long int MAX_NUMBER_OF_DEVICES_PER_PLATFORM = 10;
+long int MAX_MEMORY_OBJECTS = 100;
+long int MAX_KERNELS = 100;
+long int MAX_EVENTS = 1000;
 
 struct Device
 {
