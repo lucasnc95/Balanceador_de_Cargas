@@ -1,1 +1,0 @@
-mpic++ -I/usr/local/cuda-12.3/targets/x86_64-linux/include/ -L/opt/intel/oneapi/lib/ -D CL_TARGET_OPENCL_VERSION=120 -D MAX_NUMBER_OF_DEVICES_PER_PLATFORM=10 -D ALL_DEVICES  -O3 -o HIS_Dinamico_ALL Balanceador.cpp OpenCLWrapper.cpp main.cpp -lOpenCL -lrt
