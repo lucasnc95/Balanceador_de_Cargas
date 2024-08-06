@@ -7,7 +7,6 @@
 #include <unordered_map>
 #include <iostream>
 
-#define CL_TARGET_OPENCL_VERSION 200
 
 class OpenCLWrapper {
 public:
@@ -28,6 +27,7 @@ public:
     void setLoadBalancer(void *data, int N_Elements, int units_per_elements);
     void setAttribute(int attribute, int globalMemoryObjectID);
     int WriteObject(int GlobalObjectID, const char *data, int offset, int size);
+    void LoadBalancing();
 
     int getMaxNumberOfPlatforms() const;
     void setMaxNumberOfPlatforms(int value);

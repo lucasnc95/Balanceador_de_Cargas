@@ -5,9 +5,12 @@ int main(int argc, char **argv) {
     // Inicializa o OpenCLWrapper
     
     OpenCLWrapper openCL(argc, argv);
+    //      int t= 1;
+    //  while (t);
+
     openCL.InitDevices("ALL", 10);  
     openCL.setKernel("kernel.cl", "vectorAdd");
-    const int N = 1048576;
+    const int N = 120;
     float* a = new float[N];
     float* b = new float[N];
     float* result = new float[N];
@@ -22,7 +25,7 @@ int main(int argc, char **argv) {
     openCL.setLoadBalancer(result2, N, 1);
     int aMemObj = openCL.AllocateMemoryObject(N * sizeof(float), CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, a);
     int bMemObj = openCL.AllocateMemoryObject(N * sizeof(float), CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, b);
-    int resultMemObj = openCL.AllocateMemoryObject(N * sizeof(float), CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, result);
+    int resultMemObj = openCL.AllocateMemoryObject(N * sizeof(float), CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, result);
     
     openCL.setAttribute(0, aMemObj);
     openCL.setAttribute(1, bMemObj);
@@ -30,27 +33,27 @@ int main(int argc, char **argv) {
     
     long int tempo = 0;
     int intervalo = 100;
-    for (int x = 0; x < 10000; x++){
-    if(x % intervalo != 0){
+    for (int x = 0; x < 2; x++){
+    //if(x % intervalo != 0){
         openCL.ExecuteKernel();
     
-    for (int i = 0; i < N; ++i) {
-        a[i] = 1.0f+float(x);
-        b[i] = 2.0f+float(x);
+    // for (int i = 0; i < N; ++i) {
+    //     a[i] = 1.0f+float(x);
+    //     b[i] = 2.0f+float(x);
        
-    }
-    openCL.WriteObject(aMemObj, (char*)a, 0, N*sizeof(float));
-    openCL.WriteObject(bMemObj, (char*)b, 0, N*sizeof(float));
+    // }
+    // openCL.WriteObject(aMemObj, (char*)a, 0, N*sizeof(float));
+    // openCL.WriteObject(bMemObj, (char*)b, 0, N*sizeof(float));
     }
     
    // else openCL.PrecisaoBalanceamento();
 
-    }
+   // }
 
     
     openCL.GatherResults(resultMemObj, result2);
 
-    for (int i = 0; i < 100; ++i) {
+    for (int i = 0; i < N; ++i) {
          std::cout << "result[" << i << "] = " << result2[i] << std::endl;
          }
 
