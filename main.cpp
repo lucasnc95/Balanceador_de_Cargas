@@ -8,9 +8,9 @@ int main(int argc, char **argv) {
     //      int t= 1;
     //  while (t);
 
-    openCL.InitDevices("ALL", 10);  
+    openCL.InitDevices("ALL_DEVICES", 10);  
     openCL.setKernel("kernel.cl", "vectorAdd");
-    const int N = 120;
+    const int N = 64;
     float* a = new float[N];
     float* b = new float[N];
     float* result = new float[N];
@@ -31,24 +31,24 @@ int main(int argc, char **argv) {
     openCL.setAttribute(1, bMemObj);
     openCL.setAttribute(2, resultMemObj);
     
-    long int tempo = 0;
-    int intervalo = 100;
-    for (int x = 0; x < 2; x++){
-    //if(x % intervalo != 0){
+    
+    for (int x = 0; x < 5; x++){
+    
         openCL.ExecuteKernel();
     
-    // for (int i = 0; i < N; ++i) {
-    //     a[i] = 1.0f+float(x);
-    //     b[i] = 2.0f+float(x);
+     for (int i = 0; i < N; ++i) {
+         a[i] = 1.0f+float(5);
+         b[i] = 2.0f+float(3);
        
-    // }
-    // openCL.WriteObject(aMemObj, (char*)a, 0, N*sizeof(float));
-    // openCL.WriteObject(bMemObj, (char*)b, 0, N*sizeof(float));
+     }
+     openCL.WriteObject(aMemObj, (char*)a, 0, N*sizeof(float));
+     openCL.WriteObject(bMemObj, (char*)b, 0, N*sizeof(float));
+    
     }
     
-   // else openCL.PrecisaoBalanceamento();
+   
 
-   // }
+    
 
     
     openCL.GatherResults(resultMemObj, result2);
@@ -57,11 +57,8 @@ int main(int argc, char **argv) {
          std::cout << "result[" << i << "] = " << result2[i] << std::endl;
          }
 
-    tempo += openCL.GetEventTaskTicks(0,0);
-    long int tempoTotal = openCL.GetEventTaskOverheadTicks(0,0);
     
-    std::cout<<"Tempo de execução: "<<double(tempo)<<std::endl;
-    std::cout<<"Tempo de execução total: "<<double(tempoTotal)<<std::endl;
+   
 
 
 

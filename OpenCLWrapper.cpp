@@ -66,227 +66,490 @@ int OpenCLWrapper::InitDevices(const std::string &_device_types, const unsigned 
 
 }
 
+
+int OpenCLWrapper::InitParallelProcessor()
+{
+    cl_int state;
+    platformIDs = new cl_platform_id[maxNumberOfPlatforms];
+    if (!platformIDs) {
+        printf("Memory allocation failed for platformIDs.\n");
+        return -1;
+    }
+
+    cl_uint numberOfPlatforms = 0;
+    state = clGetPlatformIDs(maxNumberOfPlatforms, platformIDs, &numberOfPlatforms);
+    if (state != CL_SUCCESS || numberOfPlatforms == 0) {
+        printf("OpenCL Error: Platform couldn't be found.\n");
+        return -1;
+    }
+    printf("%i platform(s) found.\n", numberOfPlatforms);
+
+    cl_device_id deviceList[maxNumberOfDevices];
+    devices = new Device[maxNumberOfDevices];
+    if (!devices) {
+        printf("Memory allocation failed for devices.\n");
+        return -1;
+    }
+
+    numberOfDevices = 0;
+    int minMajorVersion = INT_MAX, minMinorVersion = INT_MAX;
+
+    for (int platform = 0; platform < numberOfPlatforms; platform++) {
+        cl_uint numberOfDevicesOfPlatform = 0;
+
+        if (device_types == "CPU_DEVICES") {
+            state = clGetDeviceIDs(platformIDs[platform], CL_DEVICE_TYPE_CPU, maxNumberOfDevicesPerPlatform, deviceList + numberOfDevices, &numberOfDevicesOfPlatform);
+        } else if (device_types == "GPU_DEVICES") {
+            state = clGetDeviceIDs(platformIDs[platform], CL_DEVICE_TYPE_GPU, maxNumberOfDevicesPerPlatform, deviceList + numberOfDevices, &numberOfDevicesOfPlatform);
+        } else {
+            state = clGetDeviceIDs(platformIDs[platform], CL_DEVICE_TYPE_ALL, maxNumberOfDevicesPerPlatform, deviceList + numberOfDevices, &numberOfDevicesOfPlatform);
+        }
+
+        if (state != CL_SUCCESS || numberOfDevicesOfPlatform == 0) {
+            printf("OpenCL Error: Devices couldn't be resolved on platform %d.\n", platform);
+            continue;
+        }
+
+        for (int count = numberOfDevices; count < numberOfDevices + numberOfDevicesOfPlatform; count++) {
+            devices[count].deviceID = deviceList[count];
+
+            clGetDeviceInfo(devices[count].deviceID, CL_DEVICE_TYPE, sizeof(cl_device_type), &devices[count].deviceType, NULL);
+            char versionStr[128];
+            clGetDeviceInfo(devices[count].deviceID, CL_DEVICE_VERSION, sizeof(versionStr), versionStr, NULL);
+
+            int majorVersion = 0, minorVersion = 0;
+            sscanf(versionStr, "OpenCL %d.%d", &majorVersion, &minorVersion);
+            printf("Device (%i) supports OpenCL version: %d.%d\n", count, majorVersion, minorVersion);
+
+            if (majorVersion < minMajorVersion || (majorVersion == minMajorVersion && minorVersion < minMinorVersion)) {
+                minMajorVersion = majorVersion;
+                minMinorVersion = minorVersion;
+            }
+        }
+
+        numberOfDevices += numberOfDevicesOfPlatform;
+    }
+
+    printf("Minimum OpenCL version supported by all devices: %d.%d\n", minMajorVersion, minMinorVersion);
+
+    for (int count = 0; count < numberOfDevices; count++) {
+        cl_context_properties contextProperties[] = {
+            CL_CONTEXT_PLATFORM, (cl_context_properties)platformIDs[count],
+            0
+        };
+
+        devices[count].context = clCreateContext(contextProperties, 1, &devices[count].deviceID, NULL, NULL, &state);
+        if (state != CL_SUCCESS) {
+            printf("OpenCL Error: Context couldn't be created for device %d.\n", count);
+            devices[count].context = NULL;
+            continue;
+        }
+
+        cl_command_queue_properties properties[] = {
+            CL_QUEUE_PROPERTIES, CL_QUEUE_PROFILING_ENABLE,
+            0
+        };
+
+        devices[count].kernelCommandQueue = clCreateCommandQueueWithProperties(devices[count].context, devices[count].deviceID, properties, &state);
+        if (state != CL_SUCCESS) {
+            printf("OpenCL Error: Kernel command queue couldn't be created for device %d.\n", count);
+            clReleaseContext(devices[count].context);
+            devices[count].context = NULL;
+            continue;
+        }
+
+        devices[count].dataCommandQueue = clCreateCommandQueueWithProperties(devices[count].context, devices[count].deviceID, properties, &state);
+        if (state != CL_SUCCESS) {
+            printf("OpenCL Error: Data command queue couldn't be created for device %d.\n", count);
+            clReleaseCommandQueue(devices[count].kernelCommandQueue);
+            clReleaseContext(devices[count].context);
+            devices[count].context = NULL;
+            continue;
+        }
+
+        devices[count].numberOfMemoryObjects = 0;
+        devices[count].numberOfKernels = 0;
+        devices[count].numberOfEvents = 0;
+
+        devices[count].memoryObjects = new cl_mem[maxMemoryObjects];
+        devices[count].kernels = new cl_kernel[maxKernels];
+        memset(devices[count].memoryObjects, 0, sizeof(cl_mem) * maxMemoryObjects);
+        memset(devices[count].kernels, 0, sizeof(cl_kernel) * maxKernels);
+
+        devices[count].memoryObjectID = new int[maxMemoryObjects];
+        devices[count].kernelID = new int[maxKernels];
+        memset(devices[count].memoryObjectID, 0, sizeof(int) * maxMemoryObjects);
+        memset(devices[count].kernelID, 0, sizeof(int) * maxKernels);
+
+        devices[count].events = new cl_event[maxEvents];
+        memset(devices[count].events, 0, sizeof(cl_event) * maxEvents);
+
+        devices[count].program = 0;
+    }
+
+    return numberOfDevices;
+}
+
+
+
+// int OpenCLWrapper::InitParallelProcessor() {
+//     cl_int state;
+//     platformIDs = new cl_platform_id[maxNumberOfPlatforms];
+//     if (!platformIDs) {
+//         printf("Memory allocation failed for platformIDs.\n");
+//         return -1;
+//     }
+
+//     // Obter plataformas
+//     cl_uint numberOfPlatforms = 0;
+//     state = clGetPlatformIDs(maxNumberOfPlatforms, platformIDs, &numberOfPlatforms);
+//     if (state != CL_SUCCESS || numberOfPlatforms == 0) {
+//         printf("OpenCL Error: Platform couldn't be found.\n");
+//         return -1;
+//     }
+//     printf("%i platform(s) found.\n", numberOfPlatforms);
+
+//     cl_device_id deviceList[maxNumberOfDevices];
+//     devices = new Device[maxNumberOfDevices];
+//     if (!devices) {
+//         printf("Memory allocation failed for devices.\n");
+//         return -1;
+//     }
+
+//     numberOfDevices = 0;
+//     int minMajorVersion = INT_MAX, minMinorVersion = INT_MAX;
+
+//     // Identificar a versão mínima do OpenCL suportada entre todos os dispositivos
+//     for (int platform = 0; platform < numberOfPlatforms; platform++) {
+//         cl_uint numberOfDevicesOfPlatform = 0;
+
+//         state = clGetDeviceIDs(platformIDs[platform], CL_DEVICE_TYPE_ALL, maxNumberOfDevicesPerPlatform, deviceList + numberOfDevices, &numberOfDevicesOfPlatform);
+//         if (state != CL_SUCCESS || numberOfDevicesOfPlatform == 0) {
+//             printf("OpenCL Error: Devices couldn't be resolved on platform %d.\n", platform);
+//             continue;
+//         }
+
+//         for (int count = numberOfDevices; count < numberOfDevices + numberOfDevicesOfPlatform; count++) {
+//             devices[count].deviceID = deviceList[count];
+
+//             // Obter a versão do OpenCL do dispositivo
+//             char versionStr[128];
+//             clGetDeviceInfo(devices[count].deviceID, CL_DEVICE_VERSION, sizeof(versionStr), versionStr, NULL);
+
+//             int majorVersion = 0, minorVersion = 0;
+//             sscanf(versionStr, "OpenCL %d.%d", &majorVersion, &minorVersion);
+//             printf("Device (%i) supports OpenCL version: %d.%d\n", count, majorVersion, minorVersion);
+
+//             // Atualizar a versão mínima do OpenCL
+//             if (majorVersion < minMajorVersion || (majorVersion == minMajorVersion && minorVersion < minMinorVersion)) {
+//                 minMajorVersion = majorVersion;
+//                 minMinorVersion = minorVersion;
+//             }
+//         }
+
+//         numberOfDevices += numberOfDevicesOfPlatform;
+//     }
+
+//     printf("Using OpenCL version: %d.%d as target for all devices.\n", minMajorVersion, minMinorVersion);
+
+//     // Configurar contextos e filas de comando para cada dispositivo usando a versão mínima detectada
+//     for (int platform = 0; platform < numberOfPlatforms; platform++) {
+//         for (int count = 0; count < numberOfDevices; count++) {
+//             cl_context_properties contextProperties[] = {
+//                 CL_CONTEXT_PLATFORM, (cl_context_properties)platformIDs[platform],
+//                 0
+//             };
+
+//             devices[count].context = clCreateContext(contextProperties, 1, &devices[count].deviceID, NULL, NULL, &state);
+//             if (state != CL_SUCCESS) {
+//                 printf("OpenCL Error: Context couldn't be created for device %d.\n", count);
+//                 devices[count].context = NULL;
+//                 continue;
+//             }
+
+//             // Usar clCreateCommandQueueWithProperties com versão mais antiga
+//             cl_command_queue_properties properties[] = {
+//                 CL_QUEUE_PROPERTIES, CL_QUEUE_PROFILING_ENABLE,
+//                 0
+//             };
+
+//             devices[count].kernelCommandQueue = clCreateCommandQueueWithProperties(devices[count].context, devices[count].deviceID, properties, &state);
+//             if (state != CL_SUCCESS) {
+//                 printf("OpenCL Error: Kernel command queue couldn't be created for device %d.\n", count);
+//                 clReleaseContext(devices[count].context);
+//                 devices[count].context = NULL;
+//                 continue;
+//             }
+
+//             devices[count].dataCommandQueue = clCreateCommandQueueWithProperties(devices[count].context, devices[count].deviceID, properties, &state);
+//             if (state != CL_SUCCESS) {
+//                 printf("OpenCL Error: Data command queue couldn't be created for device %d.\n", count);
+//                 clReleaseCommandQueue(devices[count].kernelCommandQueue);
+//                 clReleaseContext(devices[count].context);
+//                 devices[count].context = NULL;
+//                 continue;
+//             }
+
+//             // Inicializar outros atributos do dispositivo
+//             devices[count].numberOfMemoryObjects = 0;
+//             devices[count].numberOfKernels = 0;
+//             devices[count].numberOfEvents = 0;
+
+//             devices[count].memoryObjects = new cl_mem[maxMemoryObjects];
+//             devices[count].kernels = new cl_kernel[maxKernels];
+//             memset(devices[count].memoryObjects, 0, sizeof(cl_mem) * maxMemoryObjects);
+//             memset(devices[count].kernels, 0, sizeof(cl_kernel) * maxKernels);
+
+//             devices[count].memoryObjectID = new int[maxMemoryObjects];
+//             devices[count].kernelID = new int[maxKernels];
+//             memset(devices[count].memoryObjectID, 0, sizeof(int) * maxMemoryObjects);
+//             memset(devices[count].kernelID, 0, sizeof(int) * maxKernels);
+
+//             devices[count].events = new cl_event[maxEvents];
+//             memset(devices[count].events, 0, sizeof(cl_event) * maxEvents);
+
+//             devices[count].program = 0;
+//         }
+//     }
+
+//     return numberOfDevices;
+// }
+
 // int OpenCLWrapper::InitParallelProcessor()
 // {
-// 	cl_int state;
+//     cl_int state;
 //     platformIDs = new cl_platform_id[maxNumberOfPlatforms];
-	
-	
-// 	// Get platforms.
-// 	numberOfPlatforms = 0;
+//     if (!platformIDs) {
+//         printf("Memory allocation failed for platformIDs.\n");
+//         return -1;
+//     }
+
+//     // Obter plataformas
+//     cl_uint numberOfPlatforms = 0;
+//     state = clGetPlatformIDs(maxNumberOfPlatforms, platformIDs, &numberOfPlatforms);
+//     if (state != CL_SUCCESS || numberOfPlatforms == 0) {
+//         printf("OpenCL Error: Platform couldn't be found.\n");
+//         return -1;
+//     }
+//     printf("%i platform(s) found.\n", numberOfPlatforms);
+
+//     cl_device_id deviceList[maxNumberOfDevices];
+//     devices = new Device[maxNumberOfDevices];
+//     if (!devices) {
+//         printf("Memory allocation failed for devices.\n");
+//         return -1;
+//     }
+
+//     numberOfDevices = 0;
+//     int minMajorVersion = INT_MAX, minMinorVersion = INT_MAX;
+
+//     for (int platform = 0; platform < numberOfPlatforms; platform++) {
+//         cl_uint numberOfDevicesOfPlatform = 0;
+
+//         // Obter dispositivos
+//         if (device_types == "CPU_DEVICES") {
+//             state = clGetDeviceIDs(platformIDs[platform], CL_DEVICE_TYPE_CPU, maxNumberOfDevicesPerPlatform, deviceList + numberOfDevices, &numberOfDevicesOfPlatform);
+//         } else if (device_types == "GPU_DEVICES") {
+//             state = clGetDeviceIDs(platformIDs[platform], CL_DEVICE_TYPE_GPU, maxNumberOfDevicesPerPlatform, deviceList + numberOfDevices, &numberOfDevicesOfPlatform);
+//         } else {
+//             state = clGetDeviceIDs(platformIDs[platform], CL_DEVICE_TYPE_ALL, maxNumberOfDevicesPerPlatform, deviceList + numberOfDevices, &numberOfDevicesOfPlatform);
+//         }
+
+//         if (state != CL_SUCCESS || numberOfDevicesOfPlatform == 0) {
+//             printf("OpenCL Error: Devices couldn't be resolved on platform %d.\n", platform);
+//             continue;
+//         }
+
+//         for (int count = numberOfDevices; count < numberOfDevices + numberOfDevicesOfPlatform; count++) {
+//             devices[count].deviceID = deviceList[count];
+
+//             // Obter tipo e versão do OpenCL do dispositivo
+//             clGetDeviceInfo(devices[count].deviceID, CL_DEVICE_TYPE, sizeof(cl_device_type), &devices[count].deviceType, NULL);
+//             char versionStr[128];
+//             clGetDeviceInfo(devices[count].deviceID, CL_DEVICE_VERSION, sizeof(versionStr), versionStr, NULL);
+
+//             // Extrair a versão do OpenCL
+//             int majorVersion = 0, minorVersion = 0;
+//             sscanf(versionStr, "OpenCL %d.%d", &majorVersion, &minorVersion);
+//             printf("Device (%i) supports OpenCL version: %d.%d\n", count, majorVersion, minorVersion);
+
+//             // Atualizar a versão mínima do OpenCL
+//             if (majorVersion < minMajorVersion || (majorVersion == minMajorVersion && minorVersion < minMinorVersion)) {
+//                 minMajorVersion = majorVersion;
+//                 minMinorVersion = minorVersion;
+//             }
+
+//             // Criar propriedades do contexto com a versão mínima do OpenCL
+//             cl_context_properties contextProperties[] = {
+//                 CL_CONTEXT_PLATFORM, (cl_context_properties)platformIDs[platform],
+//                 0 // Finaliza a lista de propriedades
+//             };
+
+//             devices[count].context = clCreateContext(contextProperties, 1, &devices[count].deviceID, NULL, NULL, &state);
+//             if (state != CL_SUCCESS) {
+//                 printf("OpenCL Error: Context couldn't be created for device %d.\n", count);
+//                 devices[count].context = NULL;
+//                 continue;
+//             }
+
+//             // Usando clCreateCommandQueueWithProperties no lugar de clCreateCommandQueue
+//             cl_command_queue_properties properties[] = {
+//                 CL_QUEUE_PROPERTIES, CL_QUEUE_PROFILING_ENABLE,
+//                 0 // Finaliza a lista de propriedades
+//             };
+
+//             devices[count].kernelCommandQueue = clCreateCommandQueueWithProperties(devices[count].context, devices[count].deviceID, properties, &state);
+//             if (state != CL_SUCCESS) {
+//                 printf("OpenCL Error: Kernel command queue couldn't be created for device %d.\n", count);
+//                 clReleaseContext(devices[count].context);
+//                 devices[count].context = NULL;
+//                 continue;
+//             }
+
+//             devices[count].dataCommandQueue = clCreateCommandQueueWithProperties(devices[count].context, devices[count].deviceID, properties, &state);
+//             if (state != CL_SUCCESS) {
+//                 printf("OpenCL Error: Data command queue couldn't be created for device %d.\n", count);
+//                 clReleaseCommandQueue(devices[count].kernelCommandQueue);
+//                 clReleaseContext(devices[count].context);
+//                 devices[count].context = NULL;
+//                 continue;
+//             }
+
+//             // Inicializar outros atributos do dispositivo
+//             devices[count].numberOfMemoryObjects = 0;
+//             devices[count].numberOfKernels = 0;
+//             devices[count].numberOfEvents = 0;
+
+//             devices[count].memoryObjects = new cl_mem[maxMemoryObjects];
+//             devices[count].kernels = new cl_kernel[maxKernels];
+//             memset(devices[count].memoryObjects, 0, sizeof(cl_mem) * maxMemoryObjects);
+//             memset(devices[count].kernels, 0, sizeof(cl_kernel) * maxKernels);
+
+//             devices[count].memoryObjectID = new int[maxMemoryObjects];
+//             devices[count].kernelID = new int[maxKernels];
+//             memset(devices[count].memoryObjectID, 0, sizeof(int) * maxMemoryObjects);
+//             memset(devices[count].kernelID, 0, sizeof(int) * maxKernels);
+
+//             devices[count].events = new cl_event[maxEvents];
+//             memset(devices[count].events, 0, sizeof(cl_event) * maxEvents);
+
+//             devices[count].program = 0;
+//         }
+
+//         numberOfDevices += numberOfDevicesOfPlatform;
+//     }
+
+//     return numberOfDevices;
+// }
+// int OpenCLWrapper::InitParallelProcessor()
+// {
+//     cl_int state;
+// 	platformIDs = new cl_platform_id[maxNumberOfPlatforms];
+// 	//Get platforms.
+// 	cl_uint numberOfPlatforms = 0;
 // 	state = clGetPlatformIDs(maxNumberOfPlatforms, platformIDs, &numberOfPlatforms);
-// 	if (state != CL_SUCCESS)
+// 	if(state != CL_SUCCESS)
 // 	{
 // 		printf("OpenCL Error: Platform couldn't be found.\n");
 // 	}
 // 	printf("%i platform(s) found.\n", numberOfPlatforms);
-
-// 	deviceList = new cl_device_id[maxNumberOfDevices];
+	
+// 	cl_device_id deviceList[maxNumberOfDevices];
 // 	devices = new Device[maxNumberOfDevices];
 // 	numberOfDevices = 0;
-// 	for (int platform = 0; platform < numberOfPlatforms; platform++)
+// 	for(int platform = 0; platform < numberOfPlatforms; platform++)
 // 	{
-// 		// Get devices.
-//         std::cout<<"Platform: "<<platform<<std::endl;
+// 		//Get devices.
 // 		cl_uint numberOfDevicesOfPlatform;
-// if 		(device_types == "CPU_DEVICES")
-// 		state = clGetDeviceIDs(platformIDs[platform], CL_DEVICE_TYPE_CPU, maxNumberOfDevices, deviceList + numberOfDevices, &numberOfDevicesOfPlatform);
-// else if (device_types == "GPU_DEVICES")
-// 		state = clGetDeviceIDs(platformIDs[platform], CL_DEVICE_TYPE_GPU, maxNumberOfDevices, deviceList + numberOfDevices, &numberOfDevicesOfPlatform);
-// else	{
-// 		state = clGetDeviceIDs(platformIDs[platform], CL_DEVICE_TYPE_CPU, maxNumberOfDevices, deviceList + numberOfDevices, &numberOfDevicesOfPlatform);
-// 		if (state != CL_SUCCESS)
-// 		state = clGetDeviceIDs(platformIDs[platform], CL_DEVICE_TYPE_GPU, maxNumberOfDevices, deviceList + numberOfDevices, &numberOfDevicesOfPlatform);
-// }
-// 		if (state != CL_SUCCESS)
+// 	 if (device_types == "CPU_DEVICES")
+// 		state = clGetDeviceIDs(platformIDs[platform], CL_DEVICE_TYPE_CPU, maxNumberOfDevicesPerPlatform, deviceList+numberOfDevices, &numberOfDevicesOfPlatform);
+// 	else if (device_types == "GPU_DEVICES")
+// 		state = clGetDeviceIDs(platformIDs[platform], CL_DEVICE_TYPE_GPU, maxNumberOfDevicesPerPlatform, deviceList+numberOfDevices, &numberOfDevicesOfPlatform);
+// 		else{
+// 		state = clGetDeviceIDs(platformIDs[platform], CL_DEVICE_TYPE_ALL, maxNumberOfDevicesPerPlatform, deviceList+numberOfDevices, &numberOfDevicesOfPlatform);}
+// 		if(state != CL_SUCCESS)
 // 		{
 // 			printf("OpenCL Error: Devices couldn't be resolved.\n");
 // 		}
 // 		else
 // 		{
-// 			if (numberOfDevicesOfPlatform > maxNumberOfDevicesPerPlatform)
+// 			if(numberOfDevicesOfPlatform > maxNumberOfDevicesPerPlatform)
 // 			{
 // 				numberOfDevicesOfPlatform = maxNumberOfDevicesPerPlatform;
 // 			}
 // 			printf("%i device(s) found on platform %i.\n", numberOfDevicesOfPlatform, platform);
 // 		}
 
-// 		// Set devices.
-// 		for (int count = numberOfDevices; count < numberOfDevices + numberOfDevicesOfPlatform; count++)
+// 		//Set devices.
+// 		for(int count = numberOfDevices; count < numberOfDevices+numberOfDevicesOfPlatform; count++)
 // 		{
-// 			// Get ID.
-
+// 			//Get ID.
 // 			devices[count].deviceID = deviceList[count];
 
-// 			// Get type.
+// 			//Get type.
 // 			clGetDeviceInfo(devices[count].deviceID, CL_DEVICE_TYPE, sizeof(cl_device_type), &devices[count].deviceType, NULL);
 // 			clGetDeviceInfo(devices[count].deviceID, CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(cl_device_type), &devices[count].deviceMaxWorkItemsPerWorkGroup, NULL);
 // 			clGetDeviceInfo(devices[count].deviceID, CL_DEVICE_MAX_COMPUTE_UNITS, sizeof(cl_device_type), &devices[count].deviceComputeUnits, NULL);
 
-// 			if (devices[count].deviceType == CL_DEVICE_TYPE_GPU)
+// 			if(devices[count].deviceType == CL_DEVICE_TYPE_GPU)
 // 			{
 // 				printf("Device (%i) type: GPU\n", count);
 // 			}
-// 			else if (devices[count].deviceType == CL_DEVICE_TYPE_CPU)
+// 			else if(devices[count].deviceType == CL_DEVICE_TYPE_CPU)
 // 			{
 // 				printf("Device (%i) type: CPU\n", count);
 // 			}
 
-// 			// Create context.
+// 			//Create context.
 // 			devices[count].context = clCreateContext(NULL, 1, &devices[count].deviceID, NULL, NULL, &state);
-// 			if (state != CL_SUCCESS)
+// 			if(state != CL_SUCCESS)
 // 			{
 // 				printf("OpenCL Error: Context couldn't be created.\n");
 // 			}
 
-// 			// Create command queue.
+// 			//Create command queue.
 // 			devices[count].kernelCommandQueue = clCreateCommandQueue(devices[count].context, devices[count].deviceID, CL_QUEUE_PROFILING_ENABLE, &state);
-// 			if (state != CL_SUCCESS)
+// 			if(state != CL_SUCCESS)
 // 			{
 // 				printf("OpenCL Error: Kernel message queue couldn't be created.\n");
 // 			}
 
-// 			// Create command queue.
+// 			//Create command queue.
 // 			devices[count].dataCommandQueue = clCreateCommandQueue(devices[count].context, devices[count].deviceID, CL_QUEUE_PROFILING_ENABLE, &state);
-// 			if (state != CL_SUCCESS)
+// 			if(state != CL_SUCCESS)
 // 			{
 // 				printf("OpenCL Error: Data message queue couldn't be created.\n");
 // 			}
 
-// 			// Initialize memory objects, kernel and events.
-
+// 			//Initialize memory objects, kernel and events.
 // 			devices[count].numberOfMemoryObjects = 0;
 // 			devices[count].numberOfKernels = 0;
 // 			devices[count].numberOfEvents = 0;
 
 // 			devices[count].memoryObjects = new cl_mem[maxMemoryObjects];
 // 			devices[count].kernels = new cl_kernel[maxKernels];
-// 			memset(devices[count].memoryObjects, 0, sizeof(cl_mem) * maxMemoryObjects);
-// 			memset(devices[count].kernels, 0, sizeof(cl_kernel) * maxKernels);
+// 			memset(devices[count].memoryObjects, 0, sizeof(cl_mem)*maxMemoryObjects);
+// 			memset(devices[count].kernels, 0, sizeof(cl_kernel)*maxKernels);
 
 // 			devices[count].memoryObjectID = new int[maxMemoryObjects];
 // 			devices[count].kernelID = new int[maxKernels];
-// 			memset(devices[count].memoryObjectID, 0, sizeof(int) * maxMemoryObjects);
-// 			memset(devices[count].kernelID, 0, sizeof(int) * maxKernels);
+// 			memset(devices[count].memoryObjectID, 0, sizeof(int)*maxMemoryObjects);
+// 			memset(devices[count].kernelID, 0, sizeof(int)*maxKernels);
 
 // 			devices[count].events = new cl_event[maxEvents];
-// 			memset(devices[count].events, 0, sizeof(cl_kernel) * maxEvents);
+// 			memset(devices[count].events, 0, sizeof(cl_kernel)*maxEvents);
 
 // 			devices[count].program = 0;
 // 		}
 // 		numberOfDevices += numberOfDevicesOfPlatform;
 // 	}
-
 // 	return numberOfDevices;
 // }
 
-int OpenCLWrapper::InitParallelProcessor()
-{
-    cl_int state;
-	platformIDs = new cl_platform_id[maxNumberOfPlatforms];
-	//Get platforms.
-	cl_uint numberOfPlatforms = 0;
-	state = clGetPlatformIDs(maxNumberOfPlatforms, platformIDs, &numberOfPlatforms);
-	if(state != CL_SUCCESS)
-	{
-		printf("OpenCL Error: Platform couldn't be found.\n");
-	}
-	printf("%i platform(s) found.\n", numberOfPlatforms);
-	
-	cl_device_id deviceList[maxNumberOfDevices];
-	devices = new Device[maxNumberOfDevices];
-	numberOfDevices = 0;
-	for(int platform = 0; platform < numberOfPlatforms; platform++)
-	{
-		//Get devices.
-		cl_uint numberOfDevicesOfPlatform;
-	 if (device_types == "CPU_DEVICES")
-		state = clGetDeviceIDs(platformIDs[platform], CL_DEVICE_TYPE_CPU, maxNumberOfDevicesPerPlatform, deviceList+numberOfDevices, &numberOfDevicesOfPlatform);
-	else if (device_types == "GPU_DEVICES")
-		state = clGetDeviceIDs(platformIDs[platform], CL_DEVICE_TYPE_GPU, maxNumberOfDevicesPerPlatform, deviceList+numberOfDevices, &numberOfDevicesOfPlatform);
-		else{
-		state = clGetDeviceIDs(platformIDs[platform], CL_DEVICE_TYPE_CPU, maxNumberOfDevicesPerPlatform, deviceList+numberOfDevices, &numberOfDevicesOfPlatform);
-			if (state == CL_SUCCESS)
-		state = clGetDeviceIDs(platformIDs[platform], CL_DEVICE_TYPE_GPU, maxNumberOfDevicesPerPlatform, deviceList+numberOfDevices, &numberOfDevicesOfPlatform);
-		}
-		if(state != CL_SUCCESS)
-		{
-			printf("OpenCL Error: Devices couldn't be resolved.\n");
-		}
-		else
-		{
-			if(numberOfDevicesOfPlatform > maxNumberOfDevicesPerPlatform)
-			{
-				numberOfDevicesOfPlatform = maxNumberOfDevicesPerPlatform;
-			}
-			printf("%i device(s) found on platform %i.\n", numberOfDevicesOfPlatform, platform);
-		}
 
-		//Set devices.
-		for(int count = numberOfDevices; count < numberOfDevices+numberOfDevicesOfPlatform; count++)
-		{
-			//Get ID.
-			devices[count].deviceID = deviceList[count];
 
-			//Get type.
-			clGetDeviceInfo(devices[count].deviceID, CL_DEVICE_TYPE, sizeof(cl_device_type), &devices[count].deviceType, NULL);
-			clGetDeviceInfo(devices[count].deviceID, CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(cl_device_type), &devices[count].deviceMaxWorkItemsPerWorkGroup, NULL);
-			clGetDeviceInfo(devices[count].deviceID, CL_DEVICE_MAX_COMPUTE_UNITS, sizeof(cl_device_type), &devices[count].deviceComputeUnits, NULL);
 
-			if(devices[count].deviceType == CL_DEVICE_TYPE_GPU)
-			{
-				printf("Device (%i) type: GPU\n", count);
-			}
-			else if(devices[count].deviceType == CL_DEVICE_TYPE_CPU)
-			{
-				printf("Device (%i) type: CPU\n", count);
-			}
 
-			//Create context.
-			devices[count].context = clCreateContext(NULL, 1, &devices[count].deviceID, NULL, NULL, &state);
-			if(state != CL_SUCCESS)
-			{
-				printf("OpenCL Error: Context couldn't be created.\n");
-			}
-
-			//Create command queue.
-			devices[count].kernelCommandQueue = clCreateCommandQueue(devices[count].context, devices[count].deviceID, CL_QUEUE_PROFILING_ENABLE, &state);
-			if(state != CL_SUCCESS)
-			{
-				printf("OpenCL Error: Kernel message queue couldn't be created.\n");
-			}
-
-			//Create command queue.
-			devices[count].dataCommandQueue = clCreateCommandQueue(devices[count].context, devices[count].deviceID, CL_QUEUE_PROFILING_ENABLE, &state);
-			if(state != CL_SUCCESS)
-			{
-				printf("OpenCL Error: Data message queue couldn't be created.\n");
-			}
-
-			//Initialize memory objects, kernel and events.
-			devices[count].numberOfMemoryObjects = 0;
-			devices[count].numberOfKernels = 0;
-			devices[count].numberOfEvents = 0;
-
-			devices[count].memoryObjects = new cl_mem[maxMemoryObjects];
-			devices[count].kernels = new cl_kernel[maxKernels];
-			memset(devices[count].memoryObjects, 0, sizeof(cl_mem)*maxMemoryObjects);
-			memset(devices[count].kernels, 0, sizeof(cl_kernel)*maxKernels);
-
-			devices[count].memoryObjectID = new int[maxMemoryObjects];
-			devices[count].kernelID = new int[maxKernels];
-			memset(devices[count].memoryObjectID, 0, sizeof(int)*maxMemoryObjects);
-			memset(devices[count].kernelID, 0, sizeof(int)*maxKernels);
-
-			devices[count].events = new cl_event[maxEvents];
-			memset(devices[count].events, 0, sizeof(cl_kernel)*maxEvents);
-
-			devices[count].program = 0;
-		}
-		numberOfDevices += numberOfDevicesOfPlatform;
-	}
-	return numberOfDevices;
-}
 
 void OpenCLWrapper::setKernel(const std::string &sourceFile, const std::string &kernelName) {
     kernelSourceFile = sourceFile;
@@ -420,7 +683,7 @@ void OpenCLWrapper::ExecuteKernel() {
             int deviceIndex = count - meusDispositivosOffset;
             if (deviceIndex >= 0 && deviceIndex < todosDispositivos) {
                 
-                kernelEventoDispositivo[count] = RunKernel(deviceIndex, kernelDispositivo[deviceIndex], offset[deviceIndex], length[deviceIndex], 64);
+                kernelEventoDispositivo[count] = RunKernel(deviceIndex, kernelDispositivo[deviceIndex], offset[deviceIndex], length[deviceIndex], isDeviceCPU(deviceIndex)? 8 : 64);
             } else {
                 std::cerr << "Invalid device index: " << deviceIndex << std::endl;
             }
@@ -453,23 +716,23 @@ int OpenCLWrapper::RunKernel(int devicePosition, int kernelID, int parallelDataO
     
    
     // Checa se o devicePosition é válido e se há eventos disponíveis
-    if (devicePosition < 0 || devicePosition >= maxNumberOfDevices ||
-        devices[devicePosition].numberOfEvents >= maxEvents)
-    {
-        printf("Invalid device position or events limit exceeded.\n");
-        return -1;
-    }
+    // if (devicePosition < 0 || devicePosition >= maxNumberOfDevices ||
+    //     devices[devicePosition].numberOfEvents >= maxEvents)
+    // {
+    //     printf("Invalid device position or events limit exceeded.\n");
+    //     return -1;
+    // }
 
-    int kernelPosition = GetKernelPosition(devicePosition, kernelID);
-    if (kernelPosition == -1)
-    {
-        printf("Kernel position not found.\n");
-        return -1;
-    }
+    // int kernelPosition = GetKernelPosition(devicePosition, kernelID);
+    // if (kernelPosition == -1)
+    // {
+    //     printf("Kernel position not found.\n");
+    //     return -1;
+    // }
 
-    size_t globalItemsOffset = Maximum(parallelDataOffset, 0);
-    size_t globalItems = Maximum(parallelData, workGroupSize);
-    size_t localItems = workGroupSize;
+    // size_t globalItemsOffset = Maximum(parallelDataOffset, 0);
+    // size_t globalItems = Maximum(parallelData, workGroupSize);
+    // size_t localItems = workGroupSize;
 
     // Ajusta globalItems para ser múltiplo de localItems
     // if (globalItems % localItems != 0)
@@ -477,24 +740,81 @@ int OpenCLWrapper::RunKernel(int devicePosition, int kernelID, int parallelDataO
     //     globalItems = (globalItems / localItems + 1) * localItems;
     // }
 
-    cl_int state;
-    cl_event event;
+	//Make sure parallelData is a power of 2.
+	// 	size_t globalItemsOffset = Maximum(parallelDataOffset, 0);
+	// 	size_t globalItems = parallelData;
+	// 	size_t mask = 0;
+	// 	globalItems = Maximum(workGroupSize, parallelData + workGroupSize - (parallelData%workGroupSize));
 
-    state = clEnqueueNDRangeKernel(devices[devicePosition].kernelCommandQueue, devices[devicePosition].kernels[kernelPosition], 1, &globalItemsOffset, &globalItems, &localItems, 0, NULL, &event);
-    if (state != CL_SUCCESS)
+		
+	// 	size_t localItems = workGroupSize;
+
+
+
+
+    // cl_int state;
+    // cl_event event;
+
+    // state = clEnqueueNDRangeKernel(devices[devicePosition].kernelCommandQueue, devices[devicePosition].kernels[kernelPosition], 1, &globalItemsOffset, &globalItems, &localItems, 0, NULL, &event);
+    // if (state != CL_SUCCESS)
+    // {
+    //     printf("Error queueing task! %i\n", state);
+    //     return -1;
+    // }
+
+    // // Aqui você pode querer liberar a fila de comandos se não for necessária mais
+    // clFlush(devices[devicePosition].kernelCommandQueue);
+
+    // // Atualiza o array de eventos
+    // devices[devicePosition].events[devices[devicePosition].numberOfEvents] = event;
+    // devices[devicePosition].numberOfEvents += 1;
+
+    // return devices[devicePosition].numberOfEvents - 1;
+
+	 int kernelPosition = GetKernelPosition(devicePosition, kernelID);
+    if (kernelPosition != -1 && devices[devicePosition].numberOfEvents < maxEvents)
     {
-        printf("Error queueing task! %i\n", state);
-        return -1;
+        // Garantir que parallelData seja um múltiplo de workGroupSize.
+        size_t globalItemsOffset = Maximum(parallelDataOffset, 0);
+        size_t globalItems = parallelData;
+        size_t localItems = workGroupSize;
+
+        // Obter o tamanho máximo do grupo de trabalho suportado pelo dispositivo
+        size_t maxWorkGroupSize;
+        clGetDeviceInfo(devices[devicePosition].deviceID, CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(maxWorkGroupSize), &maxWorkGroupSize, NULL);
+		std::cout<<"MaxworkGroupSize: "<<maxWorkGroupSize<<std::endl;
+        // Ajustar o tamanho do grupo de trabalho para não exceder o limite e ser um divisor de globalItems
+        if (localItems > maxWorkGroupSize) {
+            localItems = maxWorkGroupSize;
+        }
+        while (globalItems % localItems != 0) {
+            localItems--;
+        }
+		std::cout<<"locaItens: "<<localItems<<std::endl;
+        cl_int state;
+        globalItems = Maximum(localItems, parallelData + localItems - (parallelData % localItems));
+
+        // Enfileirar o kernel para execução
+        state = clEnqueueNDRangeKernel(devices[devicePosition].kernelCommandQueue, devices[devicePosition].kernels[kernelPosition], 1, &globalItemsOffset, &globalItems, &localItems, 0, NULL, &devices[devicePosition].events[devices[devicePosition].numberOfEvents]);
+        if (state != CL_SUCCESS)
+        {
+            printf("Error queueing task! %i\n", state);
+            return -1;
+        }
+        else
+        {
+            clFlush(devices[devicePosition].kernelCommandQueue);
+            devices[devicePosition].numberOfEvents += 1;
+            return devices[devicePosition].numberOfEvents - 1;
+        }
     }
 
-    // Aqui você pode querer liberar a fila de comandos se não for necessária mais
-    clFlush(devices[devicePosition].kernelCommandQueue);
+    printf("Error! Couldn't find kernel position %i or number of events %i exceeded limit.\n", kernelPosition, devices[devicePosition].numberOfEvents);
+    return -1;
 
-    // Atualiza o array de eventos
-    devices[devicePosition].events[devices[devicePosition].numberOfEvents] = event;
-    devices[devicePosition].numberOfEvents += 1;
 
-    return devices[devicePosition].numberOfEvents - 1;
+
+
 }
 
    
@@ -988,10 +1308,9 @@ cl_uint OpenCLWrapper::GetDeviceComputeUnits() {
     return devices[deviceIndex].deviceComputeUnits;
 }
 
-bool OpenCLWrapper::isDeviceCPU() {
-    return devices[deviceIndex].deviceType == CL_DEVICE_TYPE_CPU;
+bool OpenCLWrapper::isDeviceCPU(int devicePosition) {
+    return devices[devicePosition].deviceType == CL_DEVICE_TYPE_CPU ? true : false;
 }
-
 bool OpenCLWrapper::RemoveKernel(int devicePosition, int kernelID) {
     int kernelPosition = GetKernelPosition(devicePosition, kernelID);
 	if (kernelPosition != -1)

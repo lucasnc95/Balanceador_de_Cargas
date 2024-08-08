@@ -4,6 +4,7 @@
 #include <CL/cl.h>
 #include <mpi.h>
 #include <vector>
+#include <climits>
 #include <unordered_map>
 #include <iostream>
 
@@ -154,7 +155,7 @@ public:
     cl_device_type GetDeviceType();
     size_t GetDeviceMaxWorkItemsPerWorkGroup();
     cl_uint GetDeviceComputeUnits();
-    bool isDeviceCPU();
+    bool isDeviceCPU(int devicePosition);
 
     bool RemoveKernel(int devicePosition, int kernelID);
     bool RemoveMemoryObject(int devicePosition, int memoryObjectID);
