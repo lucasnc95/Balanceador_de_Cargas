@@ -25,10 +25,11 @@ public:
     void setKernel(const std::string &sourceFile, const std::string &kernelName);
     int WriteToMemoryObject(int devicePosition, int memoryObjectID, const char *data, int offset, int size);
     int ReadFromMemoryObject(int devicePosition, int memoryObjectID, char *data, int offset, int size);
-    void setLoadBalancer(void *data, int N_Elements, int units_per_elements);
+    void setLoadBalancer(size_t _elementSize, int N_Elements, int units_per_elements, int _divisionSize);
     void setAttribute(int attribute, int globalMemoryObjectID);
     int WriteObject(int GlobalObjectID, const char *data, int offset, int size);
     void LoadBalancing();
+    void setBalancingTargetID(int targetID);
 
     int getMaxNumberOfPlatforms() const;
     void setMaxNumberOfPlatforms(int value);
@@ -42,11 +43,11 @@ public:
     void setMaxKernels(int value);
     int getMaxEvents() const;
     void setMaxEvents(int value);
-
-//private:
+    void Probing();
+private:
     int InitParallelProcessor();
     void Initialize();
-    void Probing(void *data, int N_Elements, int units_per_elements);
+    
     void PrecisaoBalanceamento();
     void ComputarCargas(const long int *ticks, const float *cargasAntigas, float *cargasNovas, int participantes);
     int RecuperarPosicaoHistograma(int *histograma, int tamanho, int indice);
@@ -55,7 +56,10 @@ public:
     float ComputarNorma(const float *cargasAntigas, const float *cargasNovas, int participantes);
     void initializeLengthOffset(int offset, int length, int deviceIndex);
     int CreateMemoryObject(int devicePosition, int size, cl_mem_flags memoryType, void *hostMemory);
-
+    size_t elementSize;
+    int divisionSize;
+    int unitsPerElement;
+    int balancingTargetID;
     int deviceIndex;
     int world_rank, world_size;
     bool kernelSet = false;
@@ -125,7 +129,7 @@ public:
 	int meusDispositivosLength;
     int todosDispositivos;
     int interv_balance;
-    int N_elements;
+    int nElements;
     int simulacao;
     int n_devices;
     int *offsetDispositivo; 
@@ -141,7 +145,7 @@ public:
     int maxEvents = 1000;
     int MAX_SOURCE_BUFFER_LENGTH = 1000000;
     std::string device_types; 
-
+    double tempoCB;
     int Maximum(int a, int b);
     int GetMemoryObjectPosition(int devicePosition, int memoryObjectID);
     int GetKernelPosition(int devicePosition, int kernelID);

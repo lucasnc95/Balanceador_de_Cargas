@@ -65,26 +65,27 @@ int OpenCLWrapper::InitDevices(const std::string &_device_types, const unsigned 
  return todosDispositivos;
 
 }
-
-
 int OpenCLWrapper::InitParallelProcessor()
 {
     cl_int state;
+
+    // Alocação de memória para IDs de plataforma
     platformIDs = new cl_platform_id[maxNumberOfPlatforms];
     if (!platformIDs) {
         printf("Memory allocation failed for platformIDs.\n");
         return -1;
     }
 
+    // Obtendo as plataformas disponíveis
     cl_uint numberOfPlatforms = 0;
     state = clGetPlatformIDs(maxNumberOfPlatforms, platformIDs, &numberOfPlatforms);
     if (state != CL_SUCCESS || numberOfPlatforms == 0) {
         printf("OpenCL Error: Platform couldn't be found.\n");
         return -1;
     }
-    printf("%i platform(s) found.\n", numberOfPlatforms);
+    printf("%u platform(s) found.\n", numberOfPlatforms);
 
-    cl_device_id deviceList[maxNumberOfDevices];
+    // Alocação de memória para os dispositivos
     devices = new Device[maxNumberOfDevices];
     if (!devices) {
         printf("Memory allocation failed for devices.\n");
@@ -92,459 +93,90 @@ int OpenCLWrapper::InitParallelProcessor()
     }
 
     numberOfDevices = 0;
-    int minMajorVersion = INT_MAX, minMinorVersion = INT_MAX;
 
-    for (int platform = 0; platform < numberOfPlatforms; platform++) {
+    for (cl_uint i = 0; i < numberOfPlatforms; i++) {
         cl_uint numberOfDevicesOfPlatform = 0;
+        cl_device_id deviceList[maxNumberOfDevices];
 
-        if (device_types == "CPU_DEVICES") {
-            state = clGetDeviceIDs(platformIDs[platform], CL_DEVICE_TYPE_CPU, maxNumberOfDevicesPerPlatform, deviceList + numberOfDevices, &numberOfDevicesOfPlatform);
-        } else if (device_types == "GPU_DEVICES") {
-            state = clGetDeviceIDs(platformIDs[platform], CL_DEVICE_TYPE_GPU, maxNumberOfDevicesPerPlatform, deviceList + numberOfDevices, &numberOfDevicesOfPlatform);
-        } else {
-            state = clGetDeviceIDs(platformIDs[platform], CL_DEVICE_TYPE_ALL, maxNumberOfDevicesPerPlatform, deviceList + numberOfDevices, &numberOfDevicesOfPlatform);
-        }
-
+        // Obtendo os dispositivos da plataforma atual
+        state = clGetDeviceIDs(platformIDs[i], CL_DEVICE_TYPE_ALL, maxNumberOfDevices, deviceList, &numberOfDevicesOfPlatform);
         if (state != CL_SUCCESS || numberOfDevicesOfPlatform == 0) {
-            printf("OpenCL Error: Devices couldn't be resolved on platform %d.\n", platform);
+            printf("OpenCL Error: Devices couldn't be resolved on platform %u.\n", i);
             continue;
         }
 
-        for (int count = numberOfDevices; count < numberOfDevices + numberOfDevicesOfPlatform; count++) {
-            devices[count].deviceID = deviceList[count];
+        for (cl_uint j = 0; j < numberOfDevicesOfPlatform; j++) {
+            devices[numberOfDevices].deviceID = deviceList[j];
 
-            clGetDeviceInfo(devices[count].deviceID, CL_DEVICE_TYPE, sizeof(cl_device_type), &devices[count].deviceType, NULL);
+            // Criando um contexto para cada dispositivo
+            cl_context_properties contextProperties[] = {
+                CL_CONTEXT_PLATFORM, (cl_context_properties)platformIDs[i],
+                0
+            };
+            devices[numberOfDevices].context = clCreateContext(contextProperties, 1, &devices[numberOfDevices].deviceID, NULL, NULL, &state);
+            if (state != CL_SUCCESS) {
+                printf("OpenCL Error: Context couldn't be created for device %u.\n", numberOfDevices);
+                devices[numberOfDevices].context = NULL;
+                continue;
+            }
+
+            // Obtendo a versão do OpenCL suportada pelo dispositivo
             char versionStr[128];
-            clGetDeviceInfo(devices[count].deviceID, CL_DEVICE_VERSION, sizeof(versionStr), versionStr, NULL);
+            clGetDeviceInfo(devices[numberOfDevices].deviceID, CL_DEVICE_VERSION, sizeof(versionStr), versionStr, NULL);
 
             int majorVersion = 0, minorVersion = 0;
             sscanf(versionStr, "OpenCL %d.%d", &majorVersion, &minorVersion);
-            printf("Device (%i) supports OpenCL version: %d.%d\n", count, majorVersion, minorVersion);
+            printf("Device (%u) supports OpenCL version: %d.%d\n", numberOfDevices, majorVersion, minorVersion);
 
-            if (majorVersion < minMajorVersion || (majorVersion == minMajorVersion && minorVersion < minMinorVersion)) {
-                minMajorVersion = majorVersion;
-                minMinorVersion = minorVersion;
+            // Criando filas de comando para o dispositivo
+            devices[numberOfDevices].kernelCommandQueue = clCreateCommandQueue(devices[numberOfDevices].context, devices[numberOfDevices].deviceID, CL_QUEUE_PROFILING_ENABLE, &state);
+            if (state != CL_SUCCESS) {
+                printf("OpenCL Error: Kernel command queue couldn't be created for device %u.\n", numberOfDevices);
+                clReleaseContext(devices[numberOfDevices].context);
+                devices[numberOfDevices].context = NULL;
+                continue;
             }
-        }
 
-        numberOfDevices += numberOfDevicesOfPlatform;
+            devices[numberOfDevices].dataCommandQueue = clCreateCommandQueue(devices[numberOfDevices].context, devices[numberOfDevices].deviceID, CL_QUEUE_PROFILING_ENABLE, &state);
+            if (state != CL_SUCCESS) {
+                printf("OpenCL Error: Data command queue couldn't be created for device %u.\n", numberOfDevices);
+                clReleaseCommandQueue(devices[numberOfDevices].kernelCommandQueue);
+                clReleaseContext(devices[numberOfDevices].context);
+                devices[numberOfDevices].context = NULL;
+                continue;
+            }
+
+            // Inicializando arrays de objetos e eventos
+            devices[numberOfDevices].numberOfMemoryObjects = 0;
+            devices[numberOfDevices].numberOfKernels = 0;
+            devices[numberOfDevices].numberOfEvents = 0;
+
+            devices[numberOfDevices].memoryObjects = new cl_mem[maxMemoryObjects];
+            devices[numberOfDevices].kernels = new cl_kernel[maxKernels];
+            memset(devices[numberOfDevices].memoryObjects, 0, sizeof(cl_mem) * maxMemoryObjects);
+            memset(devices[numberOfDevices].kernels, 0, sizeof(cl_kernel) * maxKernels);
+
+            devices[numberOfDevices].memoryObjectID = new int[maxMemoryObjects];
+            devices[numberOfDevices].kernelID = new int[maxKernels];
+            memset(devices[numberOfDevices].memoryObjectID, 0, sizeof(int) * maxMemoryObjects);
+            memset(devices[numberOfDevices].kernelID, 0, sizeof(int) * maxKernels);
+
+            devices[numberOfDevices].events = new cl_event[maxEvents];
+            memset(devices[numberOfDevices].events, 0, sizeof(cl_event) * maxEvents);
+
+            devices[numberOfDevices].program = 0;
+
+            numberOfDevices++;
+        }
     }
 
-    printf("Minimum OpenCL version supported by all devices: %d.%d\n", minMajorVersion, minMinorVersion);
-
-    for (int count = 0; count < numberOfDevices; count++) {
-        cl_context_properties contextProperties[] = {
-            CL_CONTEXT_PLATFORM, (cl_context_properties)platformIDs[count],
-            0
-        };
-
-        devices[count].context = clCreateContext(contextProperties, 1, &devices[count].deviceID, NULL, NULL, &state);
-        if (state != CL_SUCCESS) {
-            printf("OpenCL Error: Context couldn't be created for device %d.\n", count);
-            devices[count].context = NULL;
-            continue;
-        }
-
-        cl_command_queue_properties properties[] = {
-            CL_QUEUE_PROPERTIES, CL_QUEUE_PROFILING_ENABLE,
-            0
-        };
-
-        devices[count].kernelCommandQueue = clCreateCommandQueueWithProperties(devices[count].context, devices[count].deviceID, properties, &state);
-        if (state != CL_SUCCESS) {
-            printf("OpenCL Error: Kernel command queue couldn't be created for device %d.\n", count);
-            clReleaseContext(devices[count].context);
-            devices[count].context = NULL;
-            continue;
-        }
-
-        devices[count].dataCommandQueue = clCreateCommandQueueWithProperties(devices[count].context, devices[count].deviceID, properties, &state);
-        if (state != CL_SUCCESS) {
-            printf("OpenCL Error: Data command queue couldn't be created for device %d.\n", count);
-            clReleaseCommandQueue(devices[count].kernelCommandQueue);
-            clReleaseContext(devices[count].context);
-            devices[count].context = NULL;
-            continue;
-        }
-
-        devices[count].numberOfMemoryObjects = 0;
-        devices[count].numberOfKernels = 0;
-        devices[count].numberOfEvents = 0;
-
-        devices[count].memoryObjects = new cl_mem[maxMemoryObjects];
-        devices[count].kernels = new cl_kernel[maxKernels];
-        memset(devices[count].memoryObjects, 0, sizeof(cl_mem) * maxMemoryObjects);
-        memset(devices[count].kernels, 0, sizeof(cl_kernel) * maxKernels);
-
-        devices[count].memoryObjectID = new int[maxMemoryObjects];
-        devices[count].kernelID = new int[maxKernels];
-        memset(devices[count].memoryObjectID, 0, sizeof(int) * maxMemoryObjects);
-        memset(devices[count].kernelID, 0, sizeof(int) * maxKernels);
-
-        devices[count].events = new cl_event[maxEvents];
-        memset(devices[count].events, 0, sizeof(cl_event) * maxEvents);
-
-        devices[count].program = 0;
+    if (numberOfDevices == 0) {
+        printf("No OpenCL devices available.\n");
+        return -1;
     }
 
     return numberOfDevices;
 }
-
-
-
-// int OpenCLWrapper::InitParallelProcessor() {
-//     cl_int state;
-//     platformIDs = new cl_platform_id[maxNumberOfPlatforms];
-//     if (!platformIDs) {
-//         printf("Memory allocation failed for platformIDs.\n");
-//         return -1;
-//     }
-
-//     // Obter plataformas
-//     cl_uint numberOfPlatforms = 0;
-//     state = clGetPlatformIDs(maxNumberOfPlatforms, platformIDs, &numberOfPlatforms);
-//     if (state != CL_SUCCESS || numberOfPlatforms == 0) {
-//         printf("OpenCL Error: Platform couldn't be found.\n");
-//         return -1;
-//     }
-//     printf("%i platform(s) found.\n", numberOfPlatforms);
-
-//     cl_device_id deviceList[maxNumberOfDevices];
-//     devices = new Device[maxNumberOfDevices];
-//     if (!devices) {
-//         printf("Memory allocation failed for devices.\n");
-//         return -1;
-//     }
-
-//     numberOfDevices = 0;
-//     int minMajorVersion = INT_MAX, minMinorVersion = INT_MAX;
-
-//     // Identificar a versão mínima do OpenCL suportada entre todos os dispositivos
-//     for (int platform = 0; platform < numberOfPlatforms; platform++) {
-//         cl_uint numberOfDevicesOfPlatform = 0;
-
-//         state = clGetDeviceIDs(platformIDs[platform], CL_DEVICE_TYPE_ALL, maxNumberOfDevicesPerPlatform, deviceList + numberOfDevices, &numberOfDevicesOfPlatform);
-//         if (state != CL_SUCCESS || numberOfDevicesOfPlatform == 0) {
-//             printf("OpenCL Error: Devices couldn't be resolved on platform %d.\n", platform);
-//             continue;
-//         }
-
-//         for (int count = numberOfDevices; count < numberOfDevices + numberOfDevicesOfPlatform; count++) {
-//             devices[count].deviceID = deviceList[count];
-
-//             // Obter a versão do OpenCL do dispositivo
-//             char versionStr[128];
-//             clGetDeviceInfo(devices[count].deviceID, CL_DEVICE_VERSION, sizeof(versionStr), versionStr, NULL);
-
-//             int majorVersion = 0, minorVersion = 0;
-//             sscanf(versionStr, "OpenCL %d.%d", &majorVersion, &minorVersion);
-//             printf("Device (%i) supports OpenCL version: %d.%d\n", count, majorVersion, minorVersion);
-
-//             // Atualizar a versão mínima do OpenCL
-//             if (majorVersion < minMajorVersion || (majorVersion == minMajorVersion && minorVersion < minMinorVersion)) {
-//                 minMajorVersion = majorVersion;
-//                 minMinorVersion = minorVersion;
-//             }
-//         }
-
-//         numberOfDevices += numberOfDevicesOfPlatform;
-//     }
-
-//     printf("Using OpenCL version: %d.%d as target for all devices.\n", minMajorVersion, minMinorVersion);
-
-//     // Configurar contextos e filas de comando para cada dispositivo usando a versão mínima detectada
-//     for (int platform = 0; platform < numberOfPlatforms; platform++) {
-//         for (int count = 0; count < numberOfDevices; count++) {
-//             cl_context_properties contextProperties[] = {
-//                 CL_CONTEXT_PLATFORM, (cl_context_properties)platformIDs[platform],
-//                 0
-//             };
-
-//             devices[count].context = clCreateContext(contextProperties, 1, &devices[count].deviceID, NULL, NULL, &state);
-//             if (state != CL_SUCCESS) {
-//                 printf("OpenCL Error: Context couldn't be created for device %d.\n", count);
-//                 devices[count].context = NULL;
-//                 continue;
-//             }
-
-//             // Usar clCreateCommandQueueWithProperties com versão mais antiga
-//             cl_command_queue_properties properties[] = {
-//                 CL_QUEUE_PROPERTIES, CL_QUEUE_PROFILING_ENABLE,
-//                 0
-//             };
-
-//             devices[count].kernelCommandQueue = clCreateCommandQueueWithProperties(devices[count].context, devices[count].deviceID, properties, &state);
-//             if (state != CL_SUCCESS) {
-//                 printf("OpenCL Error: Kernel command queue couldn't be created for device %d.\n", count);
-//                 clReleaseContext(devices[count].context);
-//                 devices[count].context = NULL;
-//                 continue;
-//             }
-
-//             devices[count].dataCommandQueue = clCreateCommandQueueWithProperties(devices[count].context, devices[count].deviceID, properties, &state);
-//             if (state != CL_SUCCESS) {
-//                 printf("OpenCL Error: Data command queue couldn't be created for device %d.\n", count);
-//                 clReleaseCommandQueue(devices[count].kernelCommandQueue);
-//                 clReleaseContext(devices[count].context);
-//                 devices[count].context = NULL;
-//                 continue;
-//             }
-
-//             // Inicializar outros atributos do dispositivo
-//             devices[count].numberOfMemoryObjects = 0;
-//             devices[count].numberOfKernels = 0;
-//             devices[count].numberOfEvents = 0;
-
-//             devices[count].memoryObjects = new cl_mem[maxMemoryObjects];
-//             devices[count].kernels = new cl_kernel[maxKernels];
-//             memset(devices[count].memoryObjects, 0, sizeof(cl_mem) * maxMemoryObjects);
-//             memset(devices[count].kernels, 0, sizeof(cl_kernel) * maxKernels);
-
-//             devices[count].memoryObjectID = new int[maxMemoryObjects];
-//             devices[count].kernelID = new int[maxKernels];
-//             memset(devices[count].memoryObjectID, 0, sizeof(int) * maxMemoryObjects);
-//             memset(devices[count].kernelID, 0, sizeof(int) * maxKernels);
-
-//             devices[count].events = new cl_event[maxEvents];
-//             memset(devices[count].events, 0, sizeof(cl_event) * maxEvents);
-
-//             devices[count].program = 0;
-//         }
-//     }
-
-//     return numberOfDevices;
-// }
-
-// int OpenCLWrapper::InitParallelProcessor()
-// {
-//     cl_int state;
-//     platformIDs = new cl_platform_id[maxNumberOfPlatforms];
-//     if (!platformIDs) {
-//         printf("Memory allocation failed for platformIDs.\n");
-//         return -1;
-//     }
-
-//     // Obter plataformas
-//     cl_uint numberOfPlatforms = 0;
-//     state = clGetPlatformIDs(maxNumberOfPlatforms, platformIDs, &numberOfPlatforms);
-//     if (state != CL_SUCCESS || numberOfPlatforms == 0) {
-//         printf("OpenCL Error: Platform couldn't be found.\n");
-//         return -1;
-//     }
-//     printf("%i platform(s) found.\n", numberOfPlatforms);
-
-//     cl_device_id deviceList[maxNumberOfDevices];
-//     devices = new Device[maxNumberOfDevices];
-//     if (!devices) {
-//         printf("Memory allocation failed for devices.\n");
-//         return -1;
-//     }
-
-//     numberOfDevices = 0;
-//     int minMajorVersion = INT_MAX, minMinorVersion = INT_MAX;
-
-//     for (int platform = 0; platform < numberOfPlatforms; platform++) {
-//         cl_uint numberOfDevicesOfPlatform = 0;
-
-//         // Obter dispositivos
-//         if (device_types == "CPU_DEVICES") {
-//             state = clGetDeviceIDs(platformIDs[platform], CL_DEVICE_TYPE_CPU, maxNumberOfDevicesPerPlatform, deviceList + numberOfDevices, &numberOfDevicesOfPlatform);
-//         } else if (device_types == "GPU_DEVICES") {
-//             state = clGetDeviceIDs(platformIDs[platform], CL_DEVICE_TYPE_GPU, maxNumberOfDevicesPerPlatform, deviceList + numberOfDevices, &numberOfDevicesOfPlatform);
-//         } else {
-//             state = clGetDeviceIDs(platformIDs[platform], CL_DEVICE_TYPE_ALL, maxNumberOfDevicesPerPlatform, deviceList + numberOfDevices, &numberOfDevicesOfPlatform);
-//         }
-
-//         if (state != CL_SUCCESS || numberOfDevicesOfPlatform == 0) {
-//             printf("OpenCL Error: Devices couldn't be resolved on platform %d.\n", platform);
-//             continue;
-//         }
-
-//         for (int count = numberOfDevices; count < numberOfDevices + numberOfDevicesOfPlatform; count++) {
-//             devices[count].deviceID = deviceList[count];
-
-//             // Obter tipo e versão do OpenCL do dispositivo
-//             clGetDeviceInfo(devices[count].deviceID, CL_DEVICE_TYPE, sizeof(cl_device_type), &devices[count].deviceType, NULL);
-//             char versionStr[128];
-//             clGetDeviceInfo(devices[count].deviceID, CL_DEVICE_VERSION, sizeof(versionStr), versionStr, NULL);
-
-//             // Extrair a versão do OpenCL
-//             int majorVersion = 0, minorVersion = 0;
-//             sscanf(versionStr, "OpenCL %d.%d", &majorVersion, &minorVersion);
-//             printf("Device (%i) supports OpenCL version: %d.%d\n", count, majorVersion, minorVersion);
-
-//             // Atualizar a versão mínima do OpenCL
-//             if (majorVersion < minMajorVersion || (majorVersion == minMajorVersion && minorVersion < minMinorVersion)) {
-//                 minMajorVersion = majorVersion;
-//                 minMinorVersion = minorVersion;
-//             }
-
-//             // Criar propriedades do contexto com a versão mínima do OpenCL
-//             cl_context_properties contextProperties[] = {
-//                 CL_CONTEXT_PLATFORM, (cl_context_properties)platformIDs[platform],
-//                 0 // Finaliza a lista de propriedades
-//             };
-
-//             devices[count].context = clCreateContext(contextProperties, 1, &devices[count].deviceID, NULL, NULL, &state);
-//             if (state != CL_SUCCESS) {
-//                 printf("OpenCL Error: Context couldn't be created for device %d.\n", count);
-//                 devices[count].context = NULL;
-//                 continue;
-//             }
-
-//             // Usando clCreateCommandQueueWithProperties no lugar de clCreateCommandQueue
-//             cl_command_queue_properties properties[] = {
-//                 CL_QUEUE_PROPERTIES, CL_QUEUE_PROFILING_ENABLE,
-//                 0 // Finaliza a lista de propriedades
-//             };
-
-//             devices[count].kernelCommandQueue = clCreateCommandQueueWithProperties(devices[count].context, devices[count].deviceID, properties, &state);
-//             if (state != CL_SUCCESS) {
-//                 printf("OpenCL Error: Kernel command queue couldn't be created for device %d.\n", count);
-//                 clReleaseContext(devices[count].context);
-//                 devices[count].context = NULL;
-//                 continue;
-//             }
-
-//             devices[count].dataCommandQueue = clCreateCommandQueueWithProperties(devices[count].context, devices[count].deviceID, properties, &state);
-//             if (state != CL_SUCCESS) {
-//                 printf("OpenCL Error: Data command queue couldn't be created for device %d.\n", count);
-//                 clReleaseCommandQueue(devices[count].kernelCommandQueue);
-//                 clReleaseContext(devices[count].context);
-//                 devices[count].context = NULL;
-//                 continue;
-//             }
-
-//             // Inicializar outros atributos do dispositivo
-//             devices[count].numberOfMemoryObjects = 0;
-//             devices[count].numberOfKernels = 0;
-//             devices[count].numberOfEvents = 0;
-
-//             devices[count].memoryObjects = new cl_mem[maxMemoryObjects];
-//             devices[count].kernels = new cl_kernel[maxKernels];
-//             memset(devices[count].memoryObjects, 0, sizeof(cl_mem) * maxMemoryObjects);
-//             memset(devices[count].kernels, 0, sizeof(cl_kernel) * maxKernels);
-
-//             devices[count].memoryObjectID = new int[maxMemoryObjects];
-//             devices[count].kernelID = new int[maxKernels];
-//             memset(devices[count].memoryObjectID, 0, sizeof(int) * maxMemoryObjects);
-//             memset(devices[count].kernelID, 0, sizeof(int) * maxKernels);
-
-//             devices[count].events = new cl_event[maxEvents];
-//             memset(devices[count].events, 0, sizeof(cl_event) * maxEvents);
-
-//             devices[count].program = 0;
-//         }
-
-//         numberOfDevices += numberOfDevicesOfPlatform;
-//     }
-
-//     return numberOfDevices;
-// }
-// int OpenCLWrapper::InitParallelProcessor()
-// {
-//     cl_int state;
-// 	platformIDs = new cl_platform_id[maxNumberOfPlatforms];
-// 	//Get platforms.
-// 	cl_uint numberOfPlatforms = 0;
-// 	state = clGetPlatformIDs(maxNumberOfPlatforms, platformIDs, &numberOfPlatforms);
-// 	if(state != CL_SUCCESS)
-// 	{
-// 		printf("OpenCL Error: Platform couldn't be found.\n");
-// 	}
-// 	printf("%i platform(s) found.\n", numberOfPlatforms);
-	
-// 	cl_device_id deviceList[maxNumberOfDevices];
-// 	devices = new Device[maxNumberOfDevices];
-// 	numberOfDevices = 0;
-// 	for(int platform = 0; platform < numberOfPlatforms; platform++)
-// 	{
-// 		//Get devices.
-// 		cl_uint numberOfDevicesOfPlatform;
-// 	 if (device_types == "CPU_DEVICES")
-// 		state = clGetDeviceIDs(platformIDs[platform], CL_DEVICE_TYPE_CPU, maxNumberOfDevicesPerPlatform, deviceList+numberOfDevices, &numberOfDevicesOfPlatform);
-// 	else if (device_types == "GPU_DEVICES")
-// 		state = clGetDeviceIDs(platformIDs[platform], CL_DEVICE_TYPE_GPU, maxNumberOfDevicesPerPlatform, deviceList+numberOfDevices, &numberOfDevicesOfPlatform);
-// 		else{
-// 		state = clGetDeviceIDs(platformIDs[platform], CL_DEVICE_TYPE_ALL, maxNumberOfDevicesPerPlatform, deviceList+numberOfDevices, &numberOfDevicesOfPlatform);}
-// 		if(state != CL_SUCCESS)
-// 		{
-// 			printf("OpenCL Error: Devices couldn't be resolved.\n");
-// 		}
-// 		else
-// 		{
-// 			if(numberOfDevicesOfPlatform > maxNumberOfDevicesPerPlatform)
-// 			{
-// 				numberOfDevicesOfPlatform = maxNumberOfDevicesPerPlatform;
-// 			}
-// 			printf("%i device(s) found on platform %i.\n", numberOfDevicesOfPlatform, platform);
-// 		}
-
-// 		//Set devices.
-// 		for(int count = numberOfDevices; count < numberOfDevices+numberOfDevicesOfPlatform; count++)
-// 		{
-// 			//Get ID.
-// 			devices[count].deviceID = deviceList[count];
-
-// 			//Get type.
-// 			clGetDeviceInfo(devices[count].deviceID, CL_DEVICE_TYPE, sizeof(cl_device_type), &devices[count].deviceType, NULL);
-// 			clGetDeviceInfo(devices[count].deviceID, CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(cl_device_type), &devices[count].deviceMaxWorkItemsPerWorkGroup, NULL);
-// 			clGetDeviceInfo(devices[count].deviceID, CL_DEVICE_MAX_COMPUTE_UNITS, sizeof(cl_device_type), &devices[count].deviceComputeUnits, NULL);
-
-// 			if(devices[count].deviceType == CL_DEVICE_TYPE_GPU)
-// 			{
-// 				printf("Device (%i) type: GPU\n", count);
-// 			}
-// 			else if(devices[count].deviceType == CL_DEVICE_TYPE_CPU)
-// 			{
-// 				printf("Device (%i) type: CPU\n", count);
-// 			}
-
-// 			//Create context.
-// 			devices[count].context = clCreateContext(NULL, 1, &devices[count].deviceID, NULL, NULL, &state);
-// 			if(state != CL_SUCCESS)
-// 			{
-// 				printf("OpenCL Error: Context couldn't be created.\n");
-// 			}
-
-// 			//Create command queue.
-// 			devices[count].kernelCommandQueue = clCreateCommandQueue(devices[count].context, devices[count].deviceID, CL_QUEUE_PROFILING_ENABLE, &state);
-// 			if(state != CL_SUCCESS)
-// 			{
-// 				printf("OpenCL Error: Kernel message queue couldn't be created.\n");
-// 			}
-
-// 			//Create command queue.
-// 			devices[count].dataCommandQueue = clCreateCommandQueue(devices[count].context, devices[count].deviceID, CL_QUEUE_PROFILING_ENABLE, &state);
-// 			if(state != CL_SUCCESS)
-// 			{
-// 				printf("OpenCL Error: Data message queue couldn't be created.\n");
-// 			}
-
-// 			//Initialize memory objects, kernel and events.
-// 			devices[count].numberOfMemoryObjects = 0;
-// 			devices[count].numberOfKernels = 0;
-// 			devices[count].numberOfEvents = 0;
-
-// 			devices[count].memoryObjects = new cl_mem[maxMemoryObjects];
-// 			devices[count].kernels = new cl_kernel[maxKernels];
-// 			memset(devices[count].memoryObjects, 0, sizeof(cl_mem)*maxMemoryObjects);
-// 			memset(devices[count].kernels, 0, sizeof(cl_kernel)*maxKernels);
-
-// 			devices[count].memoryObjectID = new int[maxMemoryObjects];
-// 			devices[count].kernelID = new int[maxKernels];
-// 			memset(devices[count].memoryObjectID, 0, sizeof(int)*maxMemoryObjects);
-// 			memset(devices[count].kernelID, 0, sizeof(int)*maxKernels);
-
-// 			devices[count].events = new cl_event[maxEvents];
-// 			memset(devices[count].events, 0, sizeof(cl_kernel)*maxEvents);
-
-// 			devices[count].program = 0;
-// 		}
-// 		numberOfDevices += numberOfDevicesOfPlatform;
-// 	}
-// 	return numberOfDevices;
-// }
 
 
 
@@ -715,61 +347,7 @@ void OpenCLWrapper::ExecuteKernel() {
 int OpenCLWrapper::RunKernel(int devicePosition, int kernelID, int parallelDataOffset, int parallelData, int workGroupSize) {
     
    
-    // Checa se o devicePosition é válido e se há eventos disponíveis
-    // if (devicePosition < 0 || devicePosition >= maxNumberOfDevices ||
-    //     devices[devicePosition].numberOfEvents >= maxEvents)
-    // {
-    //     printf("Invalid device position or events limit exceeded.\n");
-    //     return -1;
-    // }
-
-    // int kernelPosition = GetKernelPosition(devicePosition, kernelID);
-    // if (kernelPosition == -1)
-    // {
-    //     printf("Kernel position not found.\n");
-    //     return -1;
-    // }
-
-    // size_t globalItemsOffset = Maximum(parallelDataOffset, 0);
-    // size_t globalItems = Maximum(parallelData, workGroupSize);
-    // size_t localItems = workGroupSize;
-
-    // Ajusta globalItems para ser múltiplo de localItems
-    // if (globalItems % localItems != 0)
-    // {
-    //     globalItems = (globalItems / localItems + 1) * localItems;
-    // }
-
-	//Make sure parallelData is a power of 2.
-	// 	size_t globalItemsOffset = Maximum(parallelDataOffset, 0);
-	// 	size_t globalItems = parallelData;
-	// 	size_t mask = 0;
-	// 	globalItems = Maximum(workGroupSize, parallelData + workGroupSize - (parallelData%workGroupSize));
-
-		
-	// 	size_t localItems = workGroupSize;
-
-
-
-
-    // cl_int state;
-    // cl_event event;
-
-    // state = clEnqueueNDRangeKernel(devices[devicePosition].kernelCommandQueue, devices[devicePosition].kernels[kernelPosition], 1, &globalItemsOffset, &globalItems, &localItems, 0, NULL, &event);
-    // if (state != CL_SUCCESS)
-    // {
-    //     printf("Error queueing task! %i\n", state);
-    //     return -1;
-    // }
-
-    // // Aqui você pode querer liberar a fila de comandos se não for necessária mais
-    // clFlush(devices[devicePosition].kernelCommandQueue);
-
-    // // Atualiza o array de eventos
-    // devices[devicePosition].events[devices[devicePosition].numberOfEvents] = event;
-    // devices[devicePosition].numberOfEvents += 1;
-
-    // return devices[devicePosition].numberOfEvents - 1;
+    
 
 	 int kernelPosition = GetKernelPosition(devicePosition, kernelID);
     if (kernelPosition != -1 && devices[devicePosition].numberOfEvents < maxEvents)
@@ -782,7 +360,7 @@ int OpenCLWrapper::RunKernel(int devicePosition, int kernelID, int parallelDataO
         // Obter o tamanho máximo do grupo de trabalho suportado pelo dispositivo
         size_t maxWorkGroupSize;
         clGetDeviceInfo(devices[devicePosition].deviceID, CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(maxWorkGroupSize), &maxWorkGroupSize, NULL);
-		std::cout<<"MaxworkGroupSize: "<<maxWorkGroupSize<<std::endl;
+		
         // Ajustar o tamanho do grupo de trabalho para não exceder o limite e ser um divisor de globalItems
         if (localItems > maxWorkGroupSize) {
             localItems = maxWorkGroupSize;
@@ -790,7 +368,7 @@ int OpenCLWrapper::RunKernel(int devicePosition, int kernelID, int parallelDataO
         while (globalItems % localItems != 0) {
             localItems--;
         }
-		std::cout<<"locaItens: "<<localItems<<std::endl;
+		
         cl_int state;
         globalItems = Maximum(localItems, parallelData + localItems - (parallelData % localItems));
 
@@ -820,7 +398,7 @@ int OpenCLWrapper::RunKernel(int devicePosition, int kernelID, int parallelDataO
    
 
 
-void OpenCLWrapper:: SynchronizeCommandQueue(int devicePosition)
+void OpenCLWrapper::SynchronizeCommandQueue(int devicePosition)
 {
     
 	clFinish(devices[devicePosition].kernelCommandQueue);
@@ -830,32 +408,26 @@ void OpenCLWrapper:: SynchronizeCommandQueue(int devicePosition)
 
 void OpenCLWrapper::GatherResults(int dataIndex, void *resultData) {
    
-	char *resultPtr = reinterpret_cast<char*>(resultData);
-	
-//   for(int count2 = 0; count2 < world_size; count2++)
-// 	{
-// 		if(count2 == world_rank)
-// 		{
 			
 			for(int count = 0; count < todosDispositivos; count++)
-			{
+			{	
+
 				if(count >= meusDispositivosOffset && count < meusDispositivosOffset+meusDispositivosLength)
-				{	int id = GetDeviceMemoryObjectID(dataIndex, count);
-					std::cout<<"offset[count]"<<offset[count]<<std::endl;
-                    std::cout<<"length[count]"<<length[count]<<std::endl;
-					ReadFromMemoryObject(count-meusDispositivosOffset, id, resultPtr+offset[count], offset[count]*sizeof(float), length[count]*sizeof(float));
+				{	
+					int id = GetDeviceMemoryObjectID(dataIndex, count);
+					std::cout<<"Preparando para ler o objeto de memória no dispositivo "<<count<<std::endl;
+					std::cout<<"Data index "<<dataIndex<<std::endl;
+					ReadFromMemoryObject(count-meusDispositivosOffset, id, (char *)resultData+(offset[count]*elementSize), offset[count]*elementSize, length[count]*elementSize);
+					std::cout<<"lido como um livro"<<std::endl;
 					SynchronizeCommandQueue(count-meusDispositivosOffset);
-					std::cout<<"------------------------------------------------------------------------------------------"<<std::endl;
 				}
 			}
-		//}
-		//MPI_Barrier(MPI_COMM_WORLD);
-	//}
+		
    
 }
 
-void OpenCLWrapper::setLoadBalancer(void *data, int N_Elements, int units_per_elements) {
-   ticks = new long int[todosDispositivos];
+void OpenCLWrapper::setLoadBalancer(size_t _elementSize, int N_Elements, int units_per_elements, int _divisionSize) {
+    ticks = new long int[todosDispositivos];
     tempos_por_carga = new double[todosDispositivos];
     cargasNovas = new float[todosDispositivos];
     cargasAntigas = new float[todosDispositivos];
@@ -867,20 +439,21 @@ void OpenCLWrapper::setLoadBalancer(void *data, int N_Elements, int units_per_el
     offsetDispositivo = new int[todosDispositivos];
     lengthDispositivo = new int[todosDispositivos];
     kernelEventoDispositivo = new int[todosDispositivos];
-    N_elements = N_Elements;
+    nElements = N_Elements;
+	unitsPerElement = units_per_elements;
     memset(ticks, 0, sizeof(long int) * todosDispositivos);
     memset(tempos_por_carga, 0, sizeof(double) * todosDispositivos);
     memset(cargasNovas, 0, sizeof(float) * todosDispositivos);
     memset(cargasAntigas, 0, sizeof(float) * todosDispositivos);
-
+	divisionSize = _divisionSize;
     offsetComputacao = 0;
-    lengthComputacao = N_Elements / todosDispositivos;
-    
+    lengthComputacao = (nElements / todosDispositivos);
+    elementSize = _elementSize;
     if (kernelSet)  {
         for (int count = 0; count < todosDispositivos; count++) {
             if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength) {
                
-			    initializeLengthOffset(offsetComputacao, (count + 1 == todosDispositivos) ? (N_Elements - offsetComputacao) : lengthComputacao, count);
+			    initializeLengthOffset(offsetComputacao, (count + 1 == todosDispositivos) ? (nElements - offsetComputacao) : lengthComputacao, count);
                 SynchronizeCommandQueue(count - meusDispositivosOffset);
             }
             offsetComputacao += lengthComputacao;
@@ -895,129 +468,148 @@ void OpenCLWrapper::setLoadBalancer(void *data, int N_Elements, int units_per_el
         cargasAntigas[count] = cargasNovas[count];
         tempos[count] = 1;
     }
+
+	//Probing();
+
+
 }
 
-// void Balanceador::Probing(int simulacao)
-// {
-// 	// if (balanceamento && ((simulacao == 0) || (simulacao == 1) ))
+void OpenCLWrapper::Probing()
+{
+	std::cout<<"Iniciando probing..."<<std::endl;
 
-// 	double tempoInicioProbing = MPI_Wtime();
-// 	double localLatencia = 0, localBanda = 0;
-// 	PrecisaoBalanceamento(simulacao);
+	double tempoInicioProbing = MPI_Wtime();
+	double localLatencia = 0, localBanda = 0;
+	char *auxData = new char[nElements*unitsPerElement*elementSize];
+	GatherResults(balancingTargetID, (auxData));
+	
+	PrecisaoBalanceamento();
 
-// 	// Computar novas cargas.
+	// Computar novas cargas.
 
-// 	for (int count = 0; count < todosDispositivos; count++)
-// 	{
-// 		if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength)
-// 		{
-// 			int overlapNovoOffset = ((int)(((count == 0) ? 0.0f : cargasNovas[count - 1]) * ((float)(xMalhaLength * yMalhaLength * zMalhaLength))));
-// 			int overlapNovoLength = ((int)(((count == 0) ? cargasNovas[count] - 0.0f : cargasNovas[count] - cargasNovas[count - 1]) * ((float)(xMalhaLength * yMalhaLength * zMalhaLength))));
-// 			for (int count2 = 0; count2 < todosDispositivos; count2++)
-// 			{
-// 				if (count > count2)
-// 				{
-// 					// Atender requisicoes de outros processos.
-// 					if (RecuperarPosicaoHistograma(dispositivosWorld, world_size, count) != RecuperarPosicaoHistograma(dispositivosWorld, world_size, count2))
-// 					{
-// 						int overlap[2];
-// 						int alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, count2);
-// 						float *malha = ((simulacao % 2) == 0) ? malhaSwapBuffer[0] : malhaSwapBuffer[1];
-// 						int malhaDevice = ((simulacao % 2) == 0) ? malhaSwapBufferDispositivo[count][0] : malhaSwapBufferDispositivo[count][1];
-// 						MPI_Recv(overlap, 2, MPI_INT, alvo, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-// 						// Podem ocorrer requisicoes vazias.
-// 						if (overlap[1] > 0)
-// 						{
-// 							ReadFromMemoryObject(count - meusDispositivosOffset, malhaDevice, (char *)(malha + (overlap[0] * MALHA_TOTAL_CELULAS)), overlap[0] * MALHA_TOTAL_CELULAS * sizeof(float), overlap[1] * MALHA_TOTAL_CELULAS * sizeof(float));
-// 							SynchronizeCommandQueue(count - meusDispositivosOffset);
+	for (int count = 0; count < todosDispositivos; count++)
+	{
+		if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength)
+		{
+			int overlapNovoOffset = ((int)(((count == 0) ? 0.0f : cargasNovas[count - 1]) * ((float)(nElements))));
+			int overlapNovoLength = ((int)(((count == 0) ? cargasNovas[count] - 0.0f : cargasNovas[count] - cargasNovas[count - 1]) * ((float)(nElements))));
+			for (int count2 = 0; count2 < todosDispositivos; count2++)
+			{
+				if (count > count2)
+				{
+					// Atender requisicoes de outros processos.
+					if (RecuperarPosicaoHistograma(dispositivosWorld, world_size, count) != RecuperarPosicaoHistograma(dispositivosWorld, world_size, count2))
+					{
+						int overlap[2];
+						int alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, count2);
+						char *malha = auxData; 
+						int dataDevice = GetDeviceMemoryObjectID(balancingTargetID, count);
+						MPI_Recv(overlap, 2, MPI_INT, alvo, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+						// Podem ocorrer requisicoes vazias.
+						if (overlap[1] > 0)
+						{
+							ReadFromMemoryObject(count - meusDispositivosOffset, dataDevice, (char *)(malha + (overlap[0] * unitsPerElement)), overlap[0] * unitsPerElement * elementSize, overlap[1] * unitsPerElement * elementSize);
+							SynchronizeCommandQueue(count - meusDispositivosOffset);
 
-// 							sizeCarga = overlap[1] * MALHA_TOTAL_CELULAS;
+							int sizeCarga = overlap[1] * unitsPerElement;
 
-// 							double tempoInicioBanda = MPI_Wtime();
-// 							MPI_Ssend(malha + (overlap[0] * MALHA_TOTAL_CELULAS), sizeCarga, MPI_FLOAT, alvo, 0, MPI_COMM_WORLD);
-// 							double aux = (MPI_Wtime() - tempoInicioBanda) / sizeCarga;
-// 							localBanda = aux > localBanda ? aux : localBanda;
-// 						}
-// 					}
-// 				}
-// 				else if (count < count2)
-// 				{
-// 					// Fazer requisicoes a outros processos.
-// 					int overlapAntigoOffset = ((int)(((count2 == 0) ? 0 : cargasAntigas[count2 - 1]) * (xMalhaLength * yMalhaLength * zMalhaLength)));
-// 					int overlapAntigoLength = ((int)(((count2 == 0) ? cargasAntigas[count2] - 0.0f : cargasAntigas[count2] - cargasAntigas[count2 - 1]) * (xMalhaLength * yMalhaLength * zMalhaLength)));
+							double tempoInicioBanda = MPI_Wtime();
+							MPI_Ssend(malha + (overlap[0] * unitsPerElement), sizeCarga, MPI_CHAR, alvo, 0, MPI_COMM_WORLD);
+							double aux = (MPI_Wtime() - tempoInicioBanda) / sizeCarga;
+							localBanda = aux > localBanda ? aux : localBanda;
+						}
+					}
+				}
+				else if (count < count2)
+				{
+					// Fazer requisicoes a outros processos.
+					int overlapAntigoOffset = ((int)(((count2 == 0) ? 0 : cargasAntigas[count2 - 1]) * (nElements)));
+					int overlapAntigoLength = ((int)(((count2 == 0) ? cargasAntigas[count2] - 0.0f : cargasAntigas[count2] - cargasAntigas[count2 - 1]) * (nElements)));
 
-// 					int intersecaoOffset;
-// 					int intersecaoLength;
+					int intersecaoOffset;
+					int intersecaoLength;
 
-// 					if (((overlapAntigoOffset <= overlapNovoOffset - (xMalhaLength * yMalhaLength)) && ComputarIntersecao(overlapAntigoOffset, overlapAntigoLength, overlapNovoOffset - (xMalhaLength * yMalhaLength), overlapNovoLength + (xMalhaLength * yMalhaLength), &intersecaoOffset, &intersecaoLength)) ||
-// 							((overlapAntigoOffset > overlapNovoOffset - (xMalhaLength * yMalhaLength)) && ComputarIntersecao(overlapNovoOffset - (xMalhaLength * yMalhaLength), overlapNovoLength + (xMalhaLength * yMalhaLength), overlapAntigoOffset, overlapAntigoLength, &intersecaoOffset, &intersecaoLength)))
-// 					{
-// 						if (count2 >= meusDispositivosOffset && count2 < meusDispositivosOffset + meusDispositivosLength)
-// 						{
-// 							float *malha = ((simulacao % 2) == 0) ? malhaSwapBuffer[0] : malhaSwapBuffer[1];
+					if (((overlapAntigoOffset <= overlapNovoOffset - (divisionSize)) && ComputarIntersecao(overlapAntigoOffset, overlapAntigoLength, overlapNovoOffset - (divisionSize), overlapNovoLength + (divisionSize), &intersecaoOffset, &intersecaoLength)) ||
+							((overlapAntigoOffset > overlapNovoOffset - (divisionSize)) && ComputarIntersecao(overlapNovoOffset - (divisionSize), overlapNovoLength + (divisionSize), overlapAntigoOffset, overlapAntigoLength, &intersecaoOffset, &intersecaoLength)))
+					{
+						if (count2 >= meusDispositivosOffset && count2 < meusDispositivosOffset + meusDispositivosLength)
+						{
+							char *malha = auxData; 
 
-// 							int malhaDevice[2] = {((simulacao % 2) == 0) ? malhaSwapBufferDispositivo[count][0] : malhaSwapBufferDispositivo[count][1],
-// 																		((simulacao % 2) == 0) ? malhaSwapBufferDispositivo[count2][0] : malhaSwapBufferDispositivo[count2][1]};
+							int dataDevice[2] = {GetDeviceMemoryObjectID(balancingTargetID, count), GetDeviceMemoryObjectID(balancingTargetID, count2)};
 
-// 							ReadFromMemoryObject(count2 - meusDispositivosOffset, malhaDevice[1], (char *)(malha + (intersecaoOffset * MALHA_TOTAL_CELULAS)), intersecaoOffset * MALHA_TOTAL_CELULAS * sizeof(float), intersecaoLength * MALHA_TOTAL_CELULAS * sizeof(float));
-// 							SynchronizeCommandQueue(count2 - meusDispositivosOffset);
+							ReadFromMemoryObject(count2 - meusDispositivosOffset, dataDevice[1], (char *)(malha + (intersecaoOffset * unitsPerElement)), intersecaoOffset * unitsPerElement * elementSize, intersecaoLength * unitsPerElement * elementSize);
+							SynchronizeCommandQueue(count2 - meusDispositivosOffset);
 
-// 							WriteToMemoryObject(count - meusDispositivosOffset, malhaDevice[0], (char *)(malha + (intersecaoOffset * MALHA_TOTAL_CELULAS)), intersecaoOffset * MALHA_TOTAL_CELULAS * sizeof(float), intersecaoLength * MALHA_TOTAL_CELULAS * sizeof(float));
-// 							SynchronizeCommandQueue(count - meusDispositivosOffset);
-// 						}
-// 						else
-// 						{
-// 							// Fazer uma requisicao.
-// 							if (RecuperarPosicaoHistograma(dispositivosWorld, world_size, count) != RecuperarPosicaoHistograma(dispositivosWorld, world_size, count2))
-// 							{
-// 								int overlap[2] = {intersecaoOffset, intersecaoLength};
-// 								int alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, count2);
-// 								float *malha = ((simulacao % 2) == 0) ? malhaSwapBuffer[0] : malhaSwapBuffer[1];
-// 								int malhaDevice = ((simulacao % 2) == 0) ? malhaSwapBufferDispositivo[count][0] : malhaSwapBufferDispositivo[count][1];
-// 								SynchronizeCommandQueue(count - meusDispositivosOffset);
-// 								double tempoInicioLatencia = MPI_Wtime();
-// 								MPI_Ssend(overlap, 2, MPI_INT, alvo, 0, MPI_COMM_WORLD);
-// 								double aux = (MPI_Wtime() - tempoInicioLatencia) / 2;
-// 								localLatencia = aux > localLatencia ? aux : localLatencia;
+							WriteToMemoryObject(count - meusDispositivosOffset, dataDevice[0], (char *)(malha + (intersecaoOffset * unitsPerElement)), intersecaoOffset * unitsPerElement * elementSize, intersecaoLength * unitsPerElement * elementSize);
+							SynchronizeCommandQueue(count - meusDispositivosOffset);
+						}
+						else
+						{
+							// Fazer uma requisicao.
+							if (RecuperarPosicaoHistograma(dispositivosWorld, world_size, count) != RecuperarPosicaoHistograma(dispositivosWorld, world_size, count2))
+							{
+								int overlap[2] = {intersecaoOffset, intersecaoLength};
+								int alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, count2);
+								char *malha = auxData;
+								int dataDevice = GetDeviceMemoryObjectID(balancingTargetID, count);
+								SynchronizeCommandQueue(count - meusDispositivosOffset);
+								double tempoInicioLatencia = MPI_Wtime();
+								MPI_Ssend(overlap, 2, MPI_INT, alvo, 0, MPI_COMM_WORLD);
+								double aux = (MPI_Wtime() - tempoInicioLatencia) / 2;
+								localLatencia = aux > localLatencia ? aux : localLatencia;
 
-// 								MPI_Recv(malha + (overlap[0] * MALHA_TOTAL_CELULAS), overlap[1] * MALHA_TOTAL_CELULAS, MPI_FLOAT, alvo, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+								MPI_Recv(malha + (overlap[0] * unitsPerElement), overlap[1] * unitsPerElement, MPI_CHAR, alvo, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
-// 								WriteToMemoryObject(count - meusDispositivosOffset, malhaDevice, (char *)(malha + (overlap[0] * MALHA_TOTAL_CELULAS)), overlap[0] * MALHA_TOTAL_CELULAS * sizeof(float), overlap[1] * MALHA_TOTAL_CELULAS * sizeof(float));
-// 								SynchronizeCommandQueue(count - meusDispositivosOffset);
-// 							}
-// 						}
-// 					}
-// 					else
-// 					{
-// 						// Fazer uma requisicao vazia.
-// 						if (RecuperarPosicaoHistograma(dispositivosWorld, world_size, count) != RecuperarPosicaoHistograma(dispositivosWorld, world_size, count2))
-// 						{
-// 							int overlap[2] = {0, 0};
-// 							int alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, count2);
-// 							float *malha = ((simulacao % 2) == 0) ? malhaSwapBuffer[0] : malhaSwapBuffer[1];
-// 							MPI_Send(overlap, 2, MPI_INT, alvo, 0, MPI_COMM_WORLD);
-// 						}
-// 					}
-// 				}
-// 			}
+								WriteToMemoryObject(count - meusDispositivosOffset, dataDevice, (char *)(malha + (overlap[0] * unitsPerElement)), overlap[0] * unitsPerElement * elementSize, overlap[1] * unitsPerElement * elementSize);
+								SynchronizeCommandQueue(count - meusDispositivosOffset);
+							}
+						}
+					}
+					else
+					{
+						// Fazer uma requisicao vazia.
+						if (RecuperarPosicaoHistograma(dispositivosWorld, world_size, count) != RecuperarPosicaoHistograma(dispositivosWorld, world_size, count2))
+						{
+							int overlap[2] = {0, 0};
+							int alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, count2);
+							char *malha = auxData;
+							MPI_Send(overlap, 2, MPI_INT, alvo, 0, MPI_COMM_WORLD);
+						}
+					}
+				}
+			}
 
-// 			parametrosMalha[count][OFFSET_COMPUTACAO] = overlapNovoOffset;
-// 			parametrosMalha[count][LENGTH_COMPUTACAO] = overlapNovoLength;
+			
+			
+			offset[count] = overlapNovoOffset;
+			length[count] = overlapNovoLength;
+			
+				
 
-// 			WriteToMemoryObject(count - meusDispositivosOffset, parametrosMalhaDispositivo[count], (char *)parametrosMalha[count], 0, sizeof(int) * NUMERO_PARAMETROS_MALHA);
-// 			SynchronizeCommandQueue(count - meusDispositivosOffset);
-// 		}
-// 	}
-// 	memcpy(cargasAntigas, cargasNovas, sizeof(float) * todosDispositivos);
 
-// 	MPI_Allreduce(&localLatencia, &latencia, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
-// 	MPI_Allreduce(&localBanda, &banda, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+			//WriteToMemoryObject(count - meusDispositivosOffset, parametrosMalhaDispositivo[count], (char *)parametrosMalha[count], 0, sizeof(int) * NUMERO_PARAMETROS_MALHA);
+			SynchronizeCommandQueue(count - meusDispositivosOffset);
+			
+		}
+	}
 
-// 	MPI_Barrier(MPI_COMM_WORLD);
-// 	double tempoFimProbing = MPI_Wtime();
-// 	tempoBalanceamento += tempoFimProbing - tempoInicioProbing;
-// 	fatorErro = tempoBalanceamento;
-// }
+	std::cout<<"Após o probing: "<<std::endl;
+	for(int i = 0; i < todosDispositivos; i++)
+	std::cout<<" Offset["<<i<<"] = "<<offset[i]<<" length["<<i<<"] = "<<length[i]<<" ";
+	std::cout<<"\n";
+
+	memcpy(cargasAntigas, cargasNovas, sizeof(float) * todosDispositivos);
+
+	MPI_Allreduce(&localLatencia, &latencia, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+	MPI_Allreduce(&localBanda, &banda, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+
+	MPI_Barrier(MPI_COMM_WORLD);
+	double tempoFimProbing = MPI_Wtime();
+	tempoBalanceamento += tempoFimProbing - tempoInicioProbing;
+	fatorErro = tempoBalanceamento;
+	delete[]auxData;
+}
 
 void OpenCLWrapper::PrecisaoBalanceamento() {
   
@@ -1035,7 +627,7 @@ void OpenCLWrapper::PrecisaoBalanceamento() {
 			if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength)
 			{
 				
-				kernelEventoDispositivo[count] = RunKernel(count - meusDispositivosOffset, kernelDispositivo[count], offset[count], length[count], 8);
+				kernelEventoDispositivo[count] = RunKernel(count - meusDispositivosOffset, kernelDispositivo[count], offset[count], length[count], isDeviceCPU(deviceIndex)? 8 : 64);
 			}
 		}
 	
@@ -1076,9 +668,147 @@ void OpenCLWrapper::PrecisaoBalanceamento() {
 
 }
 
+
+// void OpenCLWrapper::Probing()
+// {
+//    	std::cout<<"Iniciando probing..."<<std::endl;
+// 	double tempoInicioProbing = MPI_Wtime();
+// 	double localLatencia = 0, localBanda = 0;
+// 	void *auxData = new float[nElements*unitsPerElement];
+// 	GatherResults(balancingTargetID, (auxData));
+	
+   
+//     for (int count = 0; count < todosDispositivos; count++)
+//     {
+//         if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength)
+//         {
+//             int overlapNovoOffset = (count == 0 ? 0 : cargasNovas[count - 1]) * nElements;
+//             int overlapNovoLength = (count == 0 ? cargasNovas[count] : cargasNovas[count] - cargasNovas[count - 1]) * nElements;
+
+//             // Cast para char* para operar com offset
+//             char* malhaChar = static_cast<char*>(auxData);
+
+//             for (int count2 = 0; count2 < todosDispositivos; count2++)
+//             {
+//                 if (count > count2)
+//                 {
+//                     // Atender requisicoes de outros processos
+//                     if (RecuperarPosicaoHistograma(dispositivosWorld, world_size, count) != RecuperarPosicaoHistograma(dispositivosWorld, world_size, count2))
+//                     {
+//                         int overlap[2];
+//                         int alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, count2);
+//                         void* malha = auxData; 
+//                         int dataDevice = GetDeviceMemoryObjectID(balancingTargetID, count);
+//                         MPI_Recv(overlap, 2, MPI_INT, alvo, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+//                         if (overlap[1] > 0)
+//                         {
+//                             // Calcular o endereço base para leitura
+//                             char* leituraEndereco = malhaChar + (overlap[0] * unitsPerElement);
+//                             ReadFromMemoryObject(count - meusDispositivosOffset, dataDevice, leituraEndereco, overlap[0] * unitsPerElement * elementSize, overlap[1] * unitsPerElement * elementSize);
+//                             SynchronizeCommandQueue(count - meusDispositivosOffset);
+
+//                             int sizeCarga = overlap[1] * unitsPerElement;
+
+//                             double tempoInicioBanda = MPI_Wtime();
+//                             MPI_Ssend(leituraEndereco, sizeCarga, MPI_BYTE, alvo, 0, MPI_COMM_WORLD);
+//                             double aux = (MPI_Wtime() - tempoInicioBanda) / sizeCarga;
+//                             localBanda = aux > localBanda ? aux : localBanda;
+//                         }
+//                     }
+//                 }
+//                 else if (count < count2)
+//                 {
+//                     int overlapAntigoOffset = (count2 == 0 ? 0 : cargasAntigas[count2 - 1]) * nElements;
+//                     int overlapAntigoLength = (count2 == 0 ? cargasAntigas[count2] : cargasAntigas[count2] - cargasAntigas[count2 - 1]) * nElements;
+
+//                     int intersecaoOffset;
+//                     int intersecaoLength;
+
+//                     if (((overlapAntigoOffset <= overlapNovoOffset - divisionSize) && ComputarIntersecao(overlapAntigoOffset, overlapAntigoLength, overlapNovoOffset - divisionSize, overlapNovoLength + divisionSize, &intersecaoOffset, &intersecaoLength)) ||
+//                         ((overlapAntigoOffset > overlapNovoOffset - divisionSize) && ComputarIntersecao(overlapNovoOffset - divisionSize, overlapNovoLength + divisionSize, overlapAntigoOffset, overlapAntigoLength, &intersecaoOffset, &intersecaoLength)))
+//                     {
+//                         if (count2 >= meusDispositivosOffset && count2 < meusDispositivosOffset + meusDispositivosLength)
+//                         {
+//                             void* malha = auxData; 
+//                             int dataDevice[2] = {GetDeviceMemoryObjectID(balancingTargetID, count), GetDeviceMemoryObjectID(balancingTargetID, count2)};
+
+//                             char* malhaChar = static_cast<char*>(auxData);
+
+//                             char* leituraEndereco = malhaChar + (intersecaoOffset * unitsPerElement);
+//                             ReadFromMemoryObject(count2 - meusDispositivosOffset, dataDevice[1], leituraEndereco, intersecaoOffset * unitsPerElement * elementSize, intersecaoLength * unitsPerElement * elementSize);
+//                             SynchronizeCommandQueue(count2 - meusDispositivosOffset);
+
+//                             WriteToMemoryObject(count - meusDispositivosOffset, dataDevice[0], leituraEndereco, intersecaoOffset * unitsPerElement * elementSize, intersecaoLength * unitsPerElement * elementSize);
+//                             SynchronizeCommandQueue(count - meusDispositivosOffset);
+//                         }
+//                         else
+//                         {
+//                             if (RecuperarPosicaoHistograma(dispositivosWorld, world_size, count) != RecuperarPosicaoHistograma(dispositivosWorld, world_size, count2))
+//                             {
+//                                 int overlap[2] = {intersecaoOffset, intersecaoLength};
+//                                 int alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, count2);
+//                                 void* malha = auxData;
+//                                 int dataDevice = GetDeviceMemoryObjectID(balancingTargetID, count);
+//                                 SynchronizeCommandQueue(count - meusDispositivosOffset);
+//                                 double tempoInicioLatencia = MPI_Wtime();
+//                                 MPI_Ssend(overlap, 2, MPI_INT, alvo, 0, MPI_COMM_WORLD);
+//                                 double aux = (MPI_Wtime() - tempoInicioLatencia) / 2;
+//                                 localLatencia = aux > localLatencia ? aux : localLatencia;
+
+//                                 MPI_Recv(malhaChar + (overlap[0] * unitsPerElement), overlap[1] * unitsPerElement, MPI_BYTE, alvo, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+//                                 WriteToMemoryObject(count - meusDispositivosOffset, dataDevice, malhaChar + (overlap[0] * unitsPerElement), overlap[0] * unitsPerElement * elementSize, overlap[1] * unitsPerElement * elementSize);
+//                                 SynchronizeCommandQueue(count - meusDispositivosOffset);
+//                             }
+//                         }
+//                     }
+//                     else
+//                     {
+//                         if (RecuperarPosicaoHistograma(dispositivosWorld, world_size, count) != RecuperarPosicaoHistograma(dispositivosWorld, world_size, count2))
+//                         {
+//                             int overlap[2] = {0, 0};
+//                             int alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, count2);
+//                             void* malha = auxData;
+//                             MPI_Send(overlap, 2, MPI_INT, alvo, 0, MPI_COMM_WORLD);
+//                         }
+//                     }
+//                 }
+//             }
+
+//             offset[count] = overlapNovoOffset;
+//             length[count] = overlapNovoLength;
+            
+//             SynchronizeCommandQueue(count - meusDispositivosOffset);
+//         }
+//     }
+
+//     std::cout <<"Após o probing: "<< std::endl;
+//     for (int i = 0; i < todosDispositivos; i++)
+//         std::cout << "Offset[" << i << "] = " << offset[i] << " length[" << i << "] = " << length[i] << " ";
+//     std::cout << "\n";
+// 	auxData = nullptr;
+// 	delete[] auxData;
+//     memcpy(cargasAntigas, cargasNovas, sizeof(float) * todosDispositivos);
+
+//     MPI_Allreduce(&localLatencia, &latencia, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+//     MPI_Allreduce(&localBanda, &banda, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+
+//     MPI_Barrier(MPI_COMM_WORLD);
+//     double tempoFimProbing = MPI_Wtime();
+//     tempoBalanceamento += tempoFimProbing - tempoInicioProbing;
+//     fatorErro = tempoBalanceamento;
+// }
+
+
+
+
 // void OpenCLWrapper::LoadBalancing(){
 //     double tempoInicioBalanceamento = MPI_Wtime();
 //     double localTempoCB;
+
+
+// 	PrecisaoBalanceamento();
 
 //     for (int count = 0; count < todosDispositivos; count++) {
 //         if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength) {
@@ -1087,13 +817,13 @@ void OpenCLWrapper::PrecisaoBalanceamento() {
 //         }
 //     }
 //     MPI_Allreduce(&localTempoCB, &tempoCB, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
-//     tempoCB *= N_Elements;
+//     tempoCB *= nElements;
 
 //     if (latencia + ComputarNorma(cargasAntigas, cargasNovas, todosDispositivos) * (writeByte + banda) + tempoCB < tempoComputacaoInterna) {
 //         for (int count = 0; count < todosDispositivos; count++) {
 //             if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength) {
-//                 int overlapNovoOffset = ((count == 0 ? 0.0f : cargasNovas[count - 1]) * (N_Elements));
-//                 int overlapNovoLength = ((count == 0 ? cargasNovas[count] - 0.0f : cargasNovas[count] - cargasNovas[count - 1]) * (N_Elements));
+//                 int overlapNovoOffset = ((count == 0 ? 0.0f : cargasNovas[count - 1]) * (nElements));
+//                 int overlapNovoLength = ((count == 0 ? cargasNovas[count] - 0.0f : cargasNovas[count] - cargasNovas[count - 1]) * (nElements));
 //                 for (int count2 = 0; count2 < todosDispositivos; count2++) {
 //                     if (count > count2) {
 //                         if (RecuperarPosicaoHistograma(dispositivosWorld, world_size, count) != RecuperarPosicaoHistograma(dispositivosWorld, world_size, count2)) {
@@ -1103,15 +833,15 @@ void OpenCLWrapper::PrecisaoBalanceamento() {
 //                             int dataDevice = (simulacao % 2) == 0 ? swapBufferDispositivo[count][0] : swapBufferDispositivo[count][1];
 //                             MPI_Recv(overlap, 2, MPI_INT, alvo, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 //                             if (overlap[1] > 0) {
-//                                 ReadFromMemoryObject(count - meusDispositivosOffset, dataDevice, (char *)(data + overlap[0] * Element_size), overlap[0] * Element_size * sizeof(float), overlap[1] * Element_size * sizeof(float));
+//                                 ReadFromMemoryObject(count - meusDispositivosOffset, dataDevice, (char *)(data + overlap[0] * Element_size), overlap[0] * Element_size * elementSize, overlap[1] * Element_size * sizeof(float));
 //                                 SynchronizeCommandQueue(count - meusDispositivosOffset);
 //                                 size_t sizeCarga = overlap[1] * Element_size;
 //                                 MPI_Send(data + overlap[0] * Element_size, sizeCarga, custom_type_set ? mpi_custom_type : mpi_data_type, alvo, 0, MPI_COMM_WORLD);
 //                             }
 //                         }
 //                     } else if (count < count2) {
-//                         int overlapAntigoOffset = ((count2 == 0 ? 0 : cargasAntigas[count2 - 1]) * N_Elements);
-//                         int overlapAntigoLength = ((count2 == 0 ? cargasAntigas[count2] - 0.0f : cargasAntigas[count2] - cargasAntigas[count2 - 1]) * N_Elements);
+//                         int overlapAntigoOffset = ((count2 == 0 ? 0 : cargasAntigas[count2 - 1]) * nElements);
+//                         int overlapAntigoLength = ((count2 == 0 ? cargasAntigas[count2] - 0.0f : cargasAntigas[count2] - cargasAntigas[count2 - 1]) * nElements);
 
 //                         int intersecaoOffset;
 //                         int intersecaoLength;
@@ -1560,4 +1290,13 @@ for(int count = 0; count < todosDispositivos; count++)
 }
 
 return returnF;
+}
+
+
+void OpenCLWrapper::setBalancingTargetID(int targetID)
+{
+
+balancingTargetID = targetID;
+
+
 }
