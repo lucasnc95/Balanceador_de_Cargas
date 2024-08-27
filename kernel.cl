@@ -1,8 +1,8 @@
 __kernel void vectorAdd(__global const float *a, __global const float *b, __global float *c) {
     int id = get_global_id(0);
-    int N =100;
+    int N = 32768;
     if(id < N)
-        c[id] = (a[id]*(a[id] + b[id]))/2*b[id] ;
+        c[id] = (a[id] + b[id]);
     
 }
 

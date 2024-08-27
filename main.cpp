@@ -158,20 +158,20 @@ void LerPontosHIS( float *malha, int *parametrosMalha)
 
 
 int main(int argc, char **argv) {
-    // Inicializa o OpenCLWrapper
+    
     
     OpenCLWrapper openCL(argc, argv);
     
 
     openCL.InitDevices("ALL_DEVICES", 10);  
     openCL.setKernel("kernel.cl", "vectorAdd");
-    const int N = 100;
+    const int N = 32768;
     float* a = new float[N];
     float* b = new float[N];
     float* result = new float[N];
     float* result2 = new float[N];
  
-    // Inicializa os vetores a e b
+    
     for (int i = 0; i < N; ++i) {
         a[i] = 1.0f;
         b[i] = 2.0f;
@@ -181,23 +181,20 @@ int main(int argc, char **argv) {
     int aMemObj = openCL.AllocateMemoryObject(N * sizeof(float), CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, a);
     int bMemObj = openCL.AllocateMemoryObject(N * sizeof(float), CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, b);
     int resultMemObj = openCL.AllocateMemoryObject(N * sizeof(float), CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, result);
-    //int nMemObj = openCL.AllocateMemoryObject(sizeof(int), CL_MEM_READ_WRITE, nullptr);
-    //openCL.WriteObject(nMemObj, (char*)N, 0, sizeof(int));
 	openCL.setAttribute(0, aMemObj);
     openCL.setAttribute(1, bMemObj);
     openCL.setAttribute(2, resultMemObj);
-	//openCL.setAttribute(3, nMemObj);
     openCL.setBalancingTargetID(resultMemObj);	
 	
-	// int t = 1;
-	// while (t);
 	
-    for (int x = 0; x < 1000; x++){
-    
+	double inicio = MPI_Wtime();
+    for (int x = 0; x < 100; x++){
+        
 		if(x%10 == 0)
-			openCL.Probing();
-
-        openCL.ExecuteKernel();
+		openCL.Probing();
+		
+		
+		openCL.ExecuteKernel();
     
      for (int i = 0; i < N; ++i) {
          a[i] += 1.0f+float(i);
@@ -208,18 +205,18 @@ int main(int argc, char **argv) {
      openCL.WriteObject(bMemObj, (char*)b, 0, N*sizeof(float));
     
     }
-    
+    double fim = MPI_Wtime();
     
     openCL.GatherResults(resultMemObj, result);
-    float resultF = 0;
-    for (int i = 0; i < N; ++i) {
-         std::cout << "result[" << i << "] = " << result[i]<<std::endl;
+    // float resultF = 0;
+    // for (int i = 0; i < N; ++i) {
+    //      //std::cout << "result[" << i << "] = " << result[i]<<std::endl;
        
-         }
+    //      }
     
+	//std::cout <<"Tempo computação: "<<fim-inicio<<std::endl;
 
-
-   //openCL.FinishParallelProcessor();
+  // openCL.FinishParallelProcessor();
     delete[] a;
     delete[] b;
     delete[] result;
