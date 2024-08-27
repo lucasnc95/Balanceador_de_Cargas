@@ -62,6 +62,7 @@ int OpenCLWrapper::InitDevices(const std::string &_device_types, const unsigned 
     
     device_init = true;
 	memoryObjectIDs = new std::unordered_map<int, std::vector<int>>();
+    std::cout<<"Todos dispositivos: "<<todosDispositivos<<std::endl;
  return todosDispositivos;
 
 }
@@ -439,6 +440,8 @@ void OpenCLWrapper::GatherResults(int dataIndex, void *resultData) {
 }
 
 void OpenCLWrapper::setLoadBalancer(size_t _elementSize, int N_Elements, int units_per_elements, int _divisionSize) {
+    
+    std::cout<<"Todos dispositivos: "<<todosDispositivos<<std::endl;
     ticks = new long int[todosDispositivos];
     tempos_por_carga = new double[todosDispositivos];
     cargasNovas = new float[todosDispositivos];

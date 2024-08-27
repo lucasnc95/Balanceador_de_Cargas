@@ -145,7 +145,7 @@ void LerPontosHIS( float *malha, int *parametrosMalha)
 
 
 
-
+mpic++ *.cpp -o load_balancer -I/usr/lib64/ -I/usr/local/cuda-12.6/include/ -lOpenCL  -L/usr/local/cuda-12.6/targets/x86_64-linux/lib/ -I/opt/intel/oneapi/2024.0/lib/
 
 
 
