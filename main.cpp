@@ -145,7 +145,6 @@ void LerPontosHIS( float *malha, int *parametrosMalha)
 
 
 
-mpic++ *.cpp -o load_balancer -I/usr/lib64/ -I/usr/local/cuda-12.6/include/ -lOpenCL  -L/usr/local/cuda-12.6/targets/x86_64-linux/lib/ -I/opt/intel/oneapi/2024.0/lib/
 
 
 
@@ -163,7 +162,7 @@ int main(int argc, char **argv) {
     OpenCLWrapper openCL(argc, argv);
     
 
-    openCL.InitDevices("ALL_DEVICES", 10);  
+    openCL.InitDevices("GPU_DEVICES", 10);  
     openCL.setKernel("kernel.cl", "vectorAdd");
     const int N = 32768;
     float* a = new float[N];
@@ -177,6 +176,8 @@ int main(int argc, char **argv) {
         b[i] = 2.0f;
         result[i] = 0.0f; 
     }
+	// int t = 1;
+	// while(t);
     openCL.setLoadBalancer(sizeof(float), N, 1, 10);
     int aMemObj = openCL.AllocateMemoryObject(N * sizeof(float), CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, a);
     int bMemObj = openCL.AllocateMemoryObject(N * sizeof(float), CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, b);

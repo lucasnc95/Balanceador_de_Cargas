@@ -11,26 +11,26 @@ OpenCLWrapper::OpenCLWrapper(int &argc, char** &argv) {
 
 OpenCLWrapper::~OpenCLWrapper() {
   
-   for (int count = 0; count < numberOfDevices; count++) {
-        if (devices[count].context != nullptr) {
-            clReleaseContext(devices[count].context);
-        }
-        for (int i = 0; i < devices[count].numberOfKernels; i++) {
-            clReleaseKernel(devices[count].kernels[i]);
-        }
-        for (int j = 0; j < devices[count].numberOfMemoryObjects; j++) {
-            clReleaseMemObject(devices[count].memoryObjects[j]);
-        }
-        clReleaseCommandQueue(devices[count].kernelCommandQueue);
-        clReleaseCommandQueue(devices[count].dataCommandQueue);
+//    for (int count = 0; count < numberOfDevices; count++) {
+//         if (devices[count].context != nullptr) {
+//             clReleaseContext(devices[count].context);
+//         }
+//         for (int i = 0; i < devices[count].numberOfKernels; i++) {
+//             clReleaseKernel(devices[count].kernels[i]);
+//         }
+//         for (int j = 0; j < devices[count].numberOfMemoryObjects; j++) {
+//             clReleaseMemObject(devices[count].memoryObjects[j]);
+//         }
+//         clReleaseCommandQueue(devices[count].kernelCommandQueue);
+//         clReleaseCommandQueue(devices[count].dataCommandQueue);
         
-        delete[] devices[count].memoryObjects;
-        delete[] devices[count].kernels;
-        delete[] devices[count].memoryObjectID;
-        delete[] devices[count].kernelID;
-        delete[] devices[count].events;
-    }
-    delete[] devices;
+//         delete[] devices[count].memoryObjects;
+//         delete[] devices[count].kernels;
+//         delete[] devices[count].memoryObjectID;
+//         delete[] devices[count].kernelID;
+//         delete[] devices[count].events;
+//     }
+//     delete[] devices;
     MPI_Finalize();
 }
 
@@ -90,6 +90,7 @@ int OpenCLWrapper::InitParallelProcessor()
     printf("%u platform(s) found.\n", numberOfPlatforms);
 
     // Alocação de memória para os dispositivos
+    maxNumberOfDevices = 10;
     devices = new Device[maxNumberOfDevices];
     if (!devices) {
         printf("Memory allocation failed for devices.\n");
@@ -215,7 +216,7 @@ int OpenCLWrapper::InitParallelProcessor()
 void OpenCLWrapper::setKernel(const std::string &sourceFile, const std::string &kernelName) {
     kernelSourceFile = sourceFile;
     kernelFunctionName = kernelName;
-    kernelDispositivo = new int[n_devices];
+    kernelDispositivo = new int[todosDispositivos];
 	
     for(int count = 0; count < todosDispositivos; count++)
 	{
@@ -341,7 +342,7 @@ void OpenCLWrapper::ExecuteKernel() {
             int deviceIndex = count - meusDispositivosOffset;
             if (deviceIndex >= 0 && deviceIndex < todosDispositivos) {
                 
-                kernelEventoDispositivo[count] = RunKernel(deviceIndex, kernelDispositivo[deviceIndex], offset[deviceIndex], length[deviceIndex], isDeviceCPU(deviceIndex)? 8 : 512);
+                kernelEventoDispositivo[count] = RunKernel(count, kernelDispositivo[count], offset[count], length[count], isDeviceCPU(count)? 8 : 512);
             } else {
                 std::cerr << "Invalid device index: " << deviceIndex << std::endl;
             }
@@ -353,7 +354,7 @@ void OpenCLWrapper::ExecuteKernel() {
         if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength) {
             int deviceIndex = count - meusDispositivosOffset;
             if (deviceIndex >= 0 && deviceIndex < todosDispositivos) {
-                SynchronizeCommandQueue(deviceIndex);
+                SynchronizeCommandQueue(count);
             } else {
                 std::cerr << "Invalid device index: " << deviceIndex << std::endl;
             }
@@ -673,7 +674,7 @@ void OpenCLWrapper::PrecisaoBalanceamento() {
 			if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength)
 			{
 				
-				kernelEventoDispositivo[count] = RunKernel(count - meusDispositivosOffset, kernelDispositivo[count], offset[count], length[count], isDeviceCPU(deviceIndex)? 8 : 256);
+				kernelEventoDispositivo[count] = RunKernel(count - meusDispositivosOffset, kernelDispositivo[count], offset[count], length[count], isDeviceCPU(count)? 8 : 256);
 			}
 		}
 	
