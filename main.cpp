@@ -162,7 +162,7 @@ int main(int argc, char **argv) {
     OpenCLWrapper openCL(argc, argv);
     
 
-    openCL.InitDevices("GPU_DEVICES", 10);  
+    openCL.InitDevices("ALL_DEVICES", 10);  
     openCL.setKernel("kernel.cl", "vectorAdd");
     const int N = 32768;
     float* a = new float[N];

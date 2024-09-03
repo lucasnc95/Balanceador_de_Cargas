@@ -522,20 +522,19 @@ void OpenCLWrapper::Probing()
     std::cout << "Soma do length antes do probing: " << somaLengthAntes << std::endl;
 
     PrecisaoBalanceamento();
-
+   
     for (int count = 0; count < todosDispositivos; count++)
     {
         if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength)
         {
-            int overlapNovoOffset = static_cast<int>((count == 0 ? 0.0f : cargasNovas[count - 1]) * static_cast<float>(nElements));
+            int overlapNovoOffset = static_cast<int>(round(count == 0 ? 0.0f : cargasNovas[count - 1] * static_cast<float>(nElements)));
 
-            // Corrigido cálculo de overlapNovoLength
             int overlapNovoLength;
             if (count == todosDispositivos - 1) {
                 // Último dispositivo pega todos os elementos restantes
                 overlapNovoLength = nElements - overlapNovoOffset;
             } else {
-                overlapNovoLength = static_cast<int>((cargasNovas[count] - (count == 0 ? 0.0f : cargasNovas[count - 1])) * static_cast<float>(nElements));
+                overlapNovoLength = static_cast<int>(round(cargasNovas[count] * static_cast<float>(nElements)) - round(count == 0 ? 0.0f : cargasNovas[count - 1] * static_cast<float>(nElements)));
             }
 
             // Verificações e logs antes de usar os valores calculados
@@ -578,8 +577,8 @@ void OpenCLWrapper::Probing()
                 }
                 else if (count < count2)
                 {
-                    int overlapAntigoOffset = static_cast<int>((count2 == 0 ? 0 : cargasAntigas[count2 - 1]) * static_cast<float>(nElements));
-                    int overlapAntigoLength = static_cast<int>((cargasAntigas[count2] - (count2 == 0 ? 0.0f : cargasAntigas[count2 - 1])) * static_cast<float>(nElements));
+                    int overlapAntigoOffset = static_cast<int>(round(count == 0 ? 0.0f : cargasNovas[count - 1] * static_cast<float>(nElements)));
+                    int overlapAntigoLength = static_cast<int>(round(cargasNovas[count] * static_cast<float>(nElements)) - round(count == 0 ? 0.0f : cargasNovas[count - 1] * static_cast<float>(nElements)));
 
                     if (overlapAntigoOffset < 0 || overlapAntigoOffset >= nElements || 
                         overlapAntigoLength < 0 || overlapAntigoOffset + overlapAntigoLength > nElements) {
@@ -687,9 +686,9 @@ void OpenCLWrapper::PrecisaoBalanceamento() {
 		{	
 			SynchronizeCommandQueue(count - meusDispositivosOffset);
 			
-            long tickEvent = GetEventTaskTicks(count - meusDispositivosOffset, kernelEventoDispositivo[count]);
+            long tickEvent = GetEventTaskTicks(count - meusDispositivosOffset, kernelEventoDispositivo[count]);          
             ticks[count] += tickEvent;
-			
+			std::cout<<"Ticks["<<count<<"]: "<<ticks[count]<<std::endl;
 		}
 	}
 	
@@ -706,6 +705,7 @@ void OpenCLWrapper::PrecisaoBalanceamento() {
 	 	{
 	 		SynchronizeCommandQueue(count - meusDispositivosOffset);
 	 		tempos[count] = ((float)ticks[count]) / (((float)cargasNovas[count]));
+            std::cout<<"Tempos["<<count<<"]: "<<tempos[count]<<std::endl;
 	 	}
 	}
 	float tempos_root[todosDispositivos];
