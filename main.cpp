@@ -100,7 +100,7 @@ std::cout<<"Cells printed: "<<counter<<std::endl;
 
 int main(int argc, char** argv) {
    
-	double	tempoInicio = MPI_Wtime();
+	
    
     OpenCLWrapper openCL(argc, argv);
     openCL.InitDevices("ALL_DEVICES", 10);  
@@ -111,7 +111,7 @@ int main(int argc, char** argv) {
     int *parametros = new int[NUMERO_PARAMETROS_MALHA];
     float *malha = new float[tam];  // Alocar a malha corretamente
 
-   
+    double	tempoInicio = MPI_Wtime();
     InicializarParametrosMalhaHIS(parametros, 0, (x * y * z), x, y, z);
 
    
@@ -139,21 +139,27 @@ int main(int argc, char** argv) {
 	openCL.setAttribute(2, aMemObj);
     openCL.setSubdomainBoundary(sub, 2, vetArgs);
 	openCL.setBalancingTargetID(bMemObj);
+	openCL.Probing();
     for (int x = 0; x < 10000; x++) {
 		
-	// openCL.GatherResults(bMemObj, malhaAux);
-	// openCL.WriteObject(cMemObj, (char *) malhaAux, 0, tam*sizeof(float));
+	openCL.GatherResults(bMemObj, malhaAux);
+	openCL.WriteObject(cMemObj, (char *) malhaAux, 0, tam*sizeof(float));
 		 if (x % 2 == 0) {
             openCL.setAttribute(0, bMemObj);
             openCL.setAttribute(1, cMemObj);
-           // openCL.setBalancingTargetID(bMemObj);
+            openCL.setBalancingTargetID(bMemObj);
         } 
 		else {
             openCL.setAttribute(0, cMemObj);
             openCL.setAttribute(1, bMemObj);
-          //  openCL.setBalancingTargetID(cMemObj);
+            openCL.setBalancingTargetID(cMemObj);
         }
-			openCL.ExecuteKernel();
+
+		if(x % 1000 == 0)
+		openCL.Probing();
+
+
+		openCL.ExecuteKernel();
 		
 		
         

@@ -375,46 +375,48 @@ else {
 			}
 
 			//Sincronizacao da computação interna.
-			// for(int count = 0; count < todosDispositivos; count++)
-			// {
-			// 	if(count >= meusDispositivosOffset && count < meusDispositivosOffset+meusDispositivosLength)
-			// 	{
-			// 		SynchronizeCommandQueue(count-meusDispositivosOffset);
-			// 	}
-			// }
+			for(int count = 0; count < todosDispositivos; count++)
+			{
+				if(count >= meusDispositivosOffset && count < meusDispositivosOffset+meusDispositivosLength)
+				{
+					SynchronizeCommandQueue(count-meusDispositivosOffset);
+				}
+			}
 
                 
                 Comms();
 
             //Sincronizacao da comunicacao.
-			// for(int count = 0; count < todosDispositivos; count++)
-			// {
-			// 	if(count >= meusDispositivosOffset && count < meusDispositivosOffset+meusDispositivosLength)
-			// 	{
-			// 		SynchronizeCommandQueue(count-meusDispositivosOffset);
-			// 	}
-			// }
+			for(int count = 0; count < todosDispositivos; count++)
+			{
+				if(count >= meusDispositivosOffset && count < meusDispositivosOffset+meusDispositivosLength)
+				{
+					SynchronizeCommandQueue(count-meusDispositivosOffset);
+				}
+			}
 
 		
 			
 			// Computação das bordas.
 for (int count = 0; count < todosDispositivos; count++) {
     if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength) {
-        // int auxCount = 0;
-        // // Ciclo para reorganizar os argumentos de acordo com a iteração
-        
-        //     int id1 = GetDeviceMemoryObjectID(args[0], count);
-        //     int id2 = GetDeviceMemoryObjectID(args[1], count);
-        //     if(itCounter%2 == 0)
-        //     {
-        //     SetKernelAttribute(count - meusDispositivosOffset, kernelDispositivo[count], 0, id1);
-        //     SetKernelAttribute(count - meusDispositivosOffset, kernelDispositivo[count], 1, id2);
-        //     }
-        //     else
-        //     {
-        //     SetKernelAttribute(count - meusDispositivosOffset, kernelDispositivo[count], 0, id2);
-        //     SetKernelAttribute(count - meusDispositivosOffset, kernelDispositivo[count], 1, id1);   
-        //     }
+        int auxCount = 0;
+        // Ciclo para reorganizar os argumentos de acordo com a iteração
+           // std::cout<<"Iteration: "<<itCounter<<std::endl;
+           
+            // int id1 = GetDeviceMemoryObjectID(args[0], count);
+            // int id2 = GetDeviceMemoryObjectID(args[1], count);
+            // if(itCounter%2 == 0)
+            // {
+            // SetKernelAttribute(count - meusDispositivosOffset, kernelDispositivo[count], 0, id1);
+            // SetKernelAttribute(count - meusDispositivosOffset, kernelDispositivo[count], 1, id2);
+            // }
+            // else
+            // {
+            // SetKernelAttribute(count - meusDispositivosOffset, kernelDispositivo[count], 0, id2);
+            // SetKernelAttribute(count - meusDispositivosOffset, kernelDispositivo[count], 1, id1);   
+            // }
+           
         // Executa o kernel para o dispositivo
         RunKernel(count - meusDispositivosOffset, kernelDispositivo[count], offset[count], sdSize, isDeviceCPU(count - meusDispositivosOffset) ? 8 : 64);
         RunKernel(count - meusDispositivosOffset, kernelDispositivo[count], offset[count] + length[count] - (sdSize), sdSize, isDeviceCPU(count - meusDispositivosOffset) ? 8 : 64);
@@ -753,7 +755,7 @@ void OpenCLWrapper::PrecisaoBalanceamento() {
 			
             long tickEvent = GetEventTaskTicks(count - meusDispositivosOffset, kernelEventoDispositivo[count]);          
             ticks[count] += tickEvent;
-			std::cout<<"Ticks["<<count<<"]: "<<ticks[count]<<std::endl;
+			
 		}
 	}
 	
@@ -770,7 +772,7 @@ void OpenCLWrapper::PrecisaoBalanceamento() {
 	 	{
 	 		SynchronizeCommandQueue(count - meusDispositivosOffset);
 	 		tempos[count] = ((float)ticks[count]) / (((float)cargasNovas[count]));
-            std::cout<<"Tempos["<<count<<"]: "<<tempos[count]<<std::endl;
+            
 	 	}
 	}
 	float tempos_root[todosDispositivos];
@@ -1306,16 +1308,13 @@ void OpenCLWrapper::setSubdomainBoundary(size_t _sdSize, int _nArgs, int* _args)
 
 
 void OpenCLWrapper::Comms(){
-
 size_t tamanhoBorda = sdSize;
-char *malha1 = new char[nElements * elementSize * unitsPerElement];
-char *malha2 = new char[nElements * elementSize * unitsPerElement];
-GatherResults(args[0], malha1);
-GatherResults(args[1], malha2);
-int malhaDevice[2];
-int borda[2];
+char *malha = new char[nElements * elementSize * unitsPerElement];
+GatherResults(balancingTargetID, malha);
+int *malhaDevice = new int[2];
+int *borda = new int[2];
 int alvo;
-int dataEventoDispositivo[todosDispositivos];
+int *dataEventoDispositivo = new int[todosDispositivos];
 MPI_Request sendRequest, receiveRequest;
 //Transferencia de bordas, feita em quatro passos.
 			for(int passo = 0; passo < 4; passo++)
@@ -1331,16 +1330,17 @@ MPI_Request sendRequest, receiveRequest;
 						{
 							if(count == meusDispositivosOffset && count > 0)
 							{
-								char* malha = (itCounter%2 == 0 ? malha1 : malha2);
-								malhaDevice[0]= (itCounter%2 == 0 ? GetDeviceMemoryObjectID(args[0], count): GetDeviceMemoryObjectID(args[1], count));
+								
+								malhaDevice[0] = GetDeviceMemoryObjectID(balancingTargetID, count);
 								borda[0] = int(offset[count]-(tamanhoBorda));
 								borda[0] = (borda[0] < 0) ? 0 : borda[0];
 								borda[1] = int(offset[count]);
 								alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, count-1);
-                                
+
 								if(alvo%2 == 0)
 								{
 									MPI_Irecv(malha+(borda[0]*unitsPerElement), tamanhoBorda*unitsPerElement, MPI_CHAR, alvo, 0, MPI_COMM_WORLD, &receiveRequest);
+
 									dataEventoDispositivo[count] = ReadFromMemoryObject(count-meusDispositivosOffset, malhaDevice[0], (malha+(borda[1]*unitsPerElement)), borda[1]*unitsPerElement*elementSize, tamanhoBorda*unitsPerElement*elementSize);
 									SynchronizeCommandQueue(count-meusDispositivosOffset);
 									MPI_Isend(malha+(borda[1]*unitsPerElement), tamanhoBorda*unitsPerElement, MPI_CHAR, alvo, 0, MPI_COMM_WORLD, &sendRequest);
@@ -1353,9 +1353,9 @@ MPI_Request sendRequest, receiveRequest;
 								}
 							}
 							if(count == meusDispositivosOffset+meusDispositivosLength-1 && count < todosDispositivos-1)
-							{   
-                                char* malha = (itCounter%2 == 0 ? malha1 : malha2);
-								malhaDevice[0]= (itCounter%2 == 0 ? GetDeviceMemoryObjectID(args[0], count): GetDeviceMemoryObjectID(args[1], count));                                
+							{
+								malhaDevice[0]= GetDeviceMemoryObjectID(balancingTargetID, count);
+			
 								borda[0] = int((offset[count]+length[count])-(tamanhoBorda));
 								borda[0] = (borda[0] < 0) ? 0 : borda[0];
 								borda[1] = int((offset[count]+length[count]));
@@ -1381,8 +1381,8 @@ MPI_Request sendRequest, receiveRequest;
 						{
 							if(count == meusDispositivosOffset && count > 0)
 							{
-								char* malha = (itCounter%2 == 0 ? malha1 : malha2);
-								malhaDevice[0]= (itCounter%2 == 0 ? GetDeviceMemoryObjectID(args[0], count): GetDeviceMemoryObjectID(args[1], count));
+								//malha = ((simulacao%2)==0) ? malhaSwapBuffer[0] : malhaSwapBuffer[1];
+								malhaDevice[0] = GetDeviceMemoryObjectID(balancingTargetID, count);
 								borda[0] = offset[count]-(tamanhoBorda);
 								borda[0] = (borda[0] < 0) ? 0 : borda[0];
 								borda[1] = offset[count];
@@ -1405,8 +1405,8 @@ MPI_Request sendRequest, receiveRequest;
 							}
 							if(count == meusDispositivosOffset+meusDispositivosLength-1 && count < todosDispositivos-1)
 							{
-								char* malha = (itCounter%2 == 0 ? malha1 : malha2);
-								malhaDevice[0]= (itCounter%2 == 0 ? GetDeviceMemoryObjectID(args[0], count): GetDeviceMemoryObjectID(args[1], count));
+								
+								malhaDevice[0] = GetDeviceMemoryObjectID(balancingTargetID, count);
 								borda[0] = (offset[count]+length[count])-(tamanhoBorda);
 								borda[0] = (borda[0] < 0) ? 0 : borda[0];
 								borda[1] = (offset[count]+length[count]);
@@ -1431,9 +1431,9 @@ MPI_Request sendRequest, receiveRequest;
 						//No mesmo processo, no primeiro passo.
 						if(passo == 0 && count >= meusDispositivosOffset && count < meusDispositivosOffset+meusDispositivosLength-1)
 						{
-							char* malha = (itCounter%2 == 0 ? malha1 : malha2);
-							malhaDevice[0]= (itCounter%2 == 0 ? GetDeviceMemoryObjectID(args[0], count): GetDeviceMemoryObjectID(args[1], count));
-							malhaDevice[1] = (itCounter%2 == 0 ? GetDeviceMemoryObjectID(args[0], count+1): GetDeviceMemoryObjectID(args[1], count+1));
+							//malha = ((simulacao%2)==0) ? malhaSwapBuffer[0] : malhaSwapBuffer[1];
+							malhaDevice[0] = GetDeviceMemoryObjectID(balancingTargetID, count);
+							malhaDevice[1] = GetDeviceMemoryObjectID(balancingTargetID, count+1);
 							borda[0] = int(offset[count+1]-(tamanhoBorda));
 							borda[0] = (borda[0] < 0) ? 0 : borda[0];
 							borda[1] = int(offset[count+1]);
@@ -1447,10 +1447,10 @@ MPI_Request sendRequest, receiveRequest;
 
 						//No mesmo processo, no segundo passo.
 						if(passo == 1 && count >= meusDispositivosOffset && count < meusDispositivosOffset+meusDispositivosLength-1)
-						{   
-                            char* malha = (itCounter%2 == 0 ? malha1 : malha2);
-							malhaDevice[0]= (itCounter%2 == 0 ? GetDeviceMemoryObjectID(args[0], count): GetDeviceMemoryObjectID(args[1], count));
-							malhaDevice[1] = (itCounter%2 == 0 ? GetDeviceMemoryObjectID(args[0], count+1): GetDeviceMemoryObjectID(args[1], count+1));
+						{
+							//malha = ((simulacao%2)==0) ? malhaSwapBuffer[0] : malhaSwapBuffer[1];
+							malhaDevice[0] = GetDeviceMemoryObjectID(balancingTargetID, count);
+							malhaDevice[1] = GetDeviceMemoryObjectID(balancingTargetID, count+1);
 							borda[0] = offset[count+1]-(tamanhoBorda);
 							borda[0] = (borda[0] < 0) ? 0 : borda[0];
 							borda[1] = offset[count+1];
@@ -1465,7 +1465,6 @@ MPI_Request sendRequest, receiveRequest;
 				}
 			}
 
-delete[] malha1;
-delete[] malha2;
+delete[] malha;
 }
 
