@@ -99,9 +99,7 @@ std::cout<<"Cells printed: "<<counter<<std::endl;
 
 
 int main(int argc, char** argv) {
-   
-	
-   
+     
     OpenCLWrapper openCL(argc, argv);
     openCL.InitDevices("ALL_DEVICES", 10);  
     openCL.setKernel("kernels.cl", "ProcessarPontos");

@@ -1310,7 +1310,7 @@ void OpenCLWrapper::setSubdomainBoundary(size_t _sdSize, int _nArgs, int* _args)
 void OpenCLWrapper::Comms(){
 size_t tamanhoBorda = sdSize;
 char *malha = new char[nElements * elementSize * unitsPerElement];
-GatherResults(balancingTargetID, malha);
+//GatherResults(balancingTargetID, malha);
 int *malhaDevice = new int[2];
 int *borda = new int[2];
 int alvo;
