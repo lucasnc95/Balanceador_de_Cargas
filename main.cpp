@@ -71,7 +71,7 @@ void InicializarPontosHIS(float *malha,  int *parametrosMalha)
 }
 
 void LerPontosHIS( float *malha, int *parametrosMalha)
-{
+{	int counter = 0;
 	for(unsigned int x = 0; x < parametrosMalha[COMPRIMENTO_GLOBAL_X]; x++)
 	{
 		for(unsigned int y = 0; y < parametrosMalha[COMPRIMENTO_GLOBAL_Y]; y++)
@@ -79,7 +79,7 @@ void LerPontosHIS( float *malha, int *parametrosMalha)
 			for(unsigned int z = 0; z < parametrosMalha[COMPRIMENTO_GLOBAL_Z]; z++)
 			{
 				if((CELULA_A * parametrosMalha[MALHA_DIMENSAO_CELULAS]) + (z * parametrosMalha[MALHA_DIMENSAO_POSICAO_Z]) + (y * parametrosMalha[MALHA_DIMENSAO_POSICAO_Y]) + (x *parametrosMalha[MALHA_DIMENSAO_POSICAO_X]) >= parametrosMalha[OFFSET_COMPUTACAO]*MALHA_TOTAL_CELULAS && (CELULA_A * parametrosMalha[MALHA_DIMENSAO_CELULAS]) + (z * parametrosMalha[MALHA_DIMENSAO_POSICAO_Z]) + (y * parametrosMalha[MALHA_DIMENSAO_POSICAO_Y]) + (x *parametrosMalha[MALHA_DIMENSAO_POSICAO_X]) < (parametrosMalha[OFFSET_COMPUTACAO]+parametrosMalha[LENGTH_COMPUTACAO])*MALHA_TOTAL_CELULAS)
-				{
+				{	counter++;
 					printf("%f ", malha[(CELULA_A * parametrosMalha[MALHA_DIMENSAO_CELULAS]) + (z * parametrosMalha[MALHA_DIMENSAO_POSICAO_Z]) + (y * parametrosMalha[MALHA_DIMENSAO_POSICAO_Y]) + (x *parametrosMalha[MALHA_DIMENSAO_POSICAO_X])]);
 				}
 				else
@@ -90,12 +90,18 @@ void LerPontosHIS( float *malha, int *parametrosMalha)
 			printf("\n");
 		}
 	}
+
+std::cout<<"Cells printed: "<<counter<<std::endl;
+
 }
 
 
 
 
 int main(int argc, char** argv) {
+   
+	double	tempoInicio = MPI_Wtime();
+   
     OpenCLWrapper openCL(argc, argv);
     openCL.InitDevices("ALL_DEVICES", 10);  
     openCL.setKernel("kernels.cl", "ProcessarPontos");
@@ -105,57 +111,65 @@ int main(int argc, char** argv) {
     int *parametros = new int[NUMERO_PARAMETROS_MALHA];
     float *malha = new float[tam];  // Alocar a malha corretamente
 
-    std::cout << "Inicializando parametros da malha" << std::endl;
-    InicializarParametrosMalhaHIS(parametros, 0, tam, x, y, z);
+   
+    InicializarParametrosMalhaHIS(parametros, 0, (x * y * z), x, y, z);
 
-    std::cout << "Inicializando malha" << std::endl;
+   
     InicializarPontosHIS(malha, parametros);
-
-    // std::cout << "Lendo pontos da malha inicial" << std::endl;
-    // LerPontosHIS(malha, parametros);
+	int total_elements = x*y*z;
 
     // Configuração do balanceador de carga no OpenCLWrapper
     size_t sub = x * y  ;
-    openCL.setLoadBalancer(sizeof(float), tam, MALHA_TOTAL_CELULAS, sub);
+    openCL.setLoadBalancer(sizeof(float), total_elements, MALHA_TOTAL_CELULAS, sub);
 
     // Alocar objetos de memória OpenCL
-    int aMemObj = openCL.AllocateMemoryObject(NUMERO_PARAMETROS_MALHA * sizeof(int), CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, parametros);
+    int aMemObj = openCL.AllocateMemoryObject(NUMERO_PARAMETROS_MALHA * sizeof(int), CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, parametros);
     int bMemObj = openCL.AllocateMemoryObject(tam * sizeof(float), CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, malha);
     int cMemObj = openCL.AllocateMemoryObject(tam * sizeof(float), CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, malha);
 
     float *malhaAux = new float[tam];  // Para armazenar os resultados
-	std::cout<<"Size malha: "<<tam*sizeof(float)<<std::endl;
-    // Definir atributos de kernel
-    openCL.setAttribute(2, aMemObj);
-    openCL.setSubdomainBoundary(sub);
+	int *vetArgs = new int[2];
+	vetArgs[0] = bMemObj;
+	vetArgs[1] = cMemObj;
 
+	
+    // Definir atributos de kernel
+	openCL.setAttribute(0, bMemObj);
+    openCL.setAttribute(1, cMemObj);
+	openCL.setAttribute(2, aMemObj);
+    openCL.setSubdomainBoundary(sub, 2, vetArgs);
+	openCL.setBalancingTargetID(bMemObj);
     for (int x = 0; x < 10000; x++) {
-        if (x % 2 == 0) {
+		
+	// openCL.GatherResults(bMemObj, malhaAux);
+	// openCL.WriteObject(cMemObj, (char *) malhaAux, 0, tam*sizeof(float));
+		 if (x % 2 == 0) {
             openCL.setAttribute(0, bMemObj);
             openCL.setAttribute(1, cMemObj);
-            openCL.setBalancingTargetID(bMemObj);
+           // openCL.setBalancingTargetID(bMemObj);
         } 
 		else {
             openCL.setAttribute(0, cMemObj);
             openCL.setAttribute(1, bMemObj);
-            openCL.setBalancingTargetID(cMemObj);
+          //  openCL.setBalancingTargetID(cMemObj);
         }
 			openCL.ExecuteKernel();
-        // Coletar resultados a cada 10 iterações
-        // if (x % 10 == 0) {
-        //     openCL.GatherResults(bMemObj, malhaAux);
-        //     LerPontosHIS(malhaAux, parametros);
-        // }
+		
+		
+        
     }
 
 	openCL.GatherResults(bMemObj, malhaAux);
+	
         LerPontosHIS(malhaAux, parametros);
-
+	  
+	double tempoFim = MPI_Wtime();
+	std::cout<<"Tempo execução:"<<tempoFim-tempoInicio<<std::endl;
     // Liberar memória alocada
     delete[] parametros;
     delete[] malha;
     delete[] malhaAux;
-
+	
     return 0;
 }
 

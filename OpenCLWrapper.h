@@ -26,7 +26,7 @@ public:
     int WriteToMemoryObject(int devicePosition, int memoryObjectID, const char *data, int offset, size_t size);
     int ReadFromMemoryObject(int devicePosition, int memoryObjectID, char *data, int offset, size_t size);
     void setLoadBalancer(size_t _elementSize, int N_Elements, int units_per_elements, int _divisionSize);
-    void setSubdomainBoundary(size_t _sdSize);
+    void setSubdomainBoundary(size_t _sdSize, int _nArgs, int * _args);
     void setAttribute(int attribute, int globalMemoryObjectID);
     int WriteObject(int GlobalObjectID, const char *data, int offset, size_t size);
     void LoadBalancing();
@@ -62,6 +62,7 @@ private:
     int unitsPerElement;
     int balancingTargetID;
     int deviceIndex;
+    long int itCounter = 0;
     int world_rank, world_size;
     bool kernelSet = false;
     bool loadBalancerSet = false;
@@ -136,7 +137,8 @@ private:
     int *offsetDispositivo; 
     int *lengthDispositivo;
     int *memObjects;
-   
+    int nArgs;
+    int *args;
     // Parâmetros ajustáveis
     int maxNumberOfPlatforms = 10;
     int maxNumberOfDevices = 10;
