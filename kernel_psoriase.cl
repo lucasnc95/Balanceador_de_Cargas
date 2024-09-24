@@ -6,11 +6,19 @@
 #define CELULA_W 3    // Medicamento imunológico (W)
 #define CELULA_K 4    // Queratinócitos (K)
 
-// Cada célula ocupa 5 posições na malha (5 estados)
-#define CELULAS_SINGLE_CELL_SIZEOF 5
+// Cada célula ocupa 5 posições na malha 
+#define CELULAS_SINGLE_CELL_SIZEOF 8
 
 // Tamanho total para armazenar todas as células (em posições)
-#define CELULAS_SIZEOF (MALHA_TOTAL_CELULAS * CELULAS_SINGLE_CELL_SIZEOF)
+#define CELULAS_SIZEOF 40
+
+// Offsets para as células na malha
+#define CELULAS_L_OFFSET 0    // Células T - L
+#define CELULAS_M_OFFSET 8    // Células dendríticas - M
+#define CELULAS_S_OFFSET 16   // Citocinas - S
+#define CELULAS_W_OFFSET 24   // Medicamento imunológico - W
+#define CELULAS_K_OFFSET 32   // Queratinócitos - K
+
 
 
 #define CELULAS_POSICAO_OR_OFFSET 0  
