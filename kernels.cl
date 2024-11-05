@@ -185,7 +185,7 @@ __kernel void ProcessarPontos(__global float *malhaPrincipalAtual, __global floa
 	for(int count = 0; count < MALHA_TOTAL_CELULAS; count++)
 	{
 		malhaPrincipalAtual[malhaIndex  + (((CELULA_A  + count)) * parametrosMalhaGPU[MALHA_DIMENSAO_CELULAS])] = celulas[((CELULA_A  + count) * CELULAS_SINGLE_CELL_SIZEOF) + CELULAS_NOVO_VALOR_OFFSET];
-		malhaPrincipalAnterior[malhaIndex  + (((CELULA_A  + count)) * parametrosMalhaGPU[MALHA_DIMENSAO_CELULAS])] = celulas[((CELULA_A  + count) * CELULAS_SINGLE_CELL_SIZEOF) + CELULAS_NOVO_VALOR_OFFSET];
+		
 
 	}
 	

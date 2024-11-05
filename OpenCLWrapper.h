@@ -67,6 +67,7 @@ private:
     bool kernelSet = false;
     bool loadBalancerSet = false;
     bool device_init = false;
+    double writeByte = 0.0;
     std::string kernelSourceFile;
     std::string kernelFunctionName;
     size_t sdSize;

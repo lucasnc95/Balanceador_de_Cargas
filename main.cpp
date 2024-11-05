@@ -42,7 +42,7 @@ void InicializarParametrosMalhaHIS(int *parametrosMalha,  int offsetComputacao, 
 
 void InicializarPontosHIS(float *malha,  int *parametrosMalha)
 {
-	//*malha = new float[parametrosMalha[COMPRIMENTO_GLOBAL_X]*parametrosMalha[COMPRIMENTO_GLOBAL_Y]*parametrosMalha[COMPRIMENTO_GLOBAL_Z]*MALHA_TOTAL_CELULAS*sizeof(float)];
+	
 	for(unsigned int x = 0; x < parametrosMalha[COMPRIMENTO_GLOBAL_X]; x++)
 	{	
 		for(unsigned int y = 0; y < parametrosMalha[COMPRIMENTO_GLOBAL_Y]; y++)
@@ -104,7 +104,7 @@ int main(int argc, char** argv) {
     openCL.InitDevices("ALL_DEVICES", 10);  
     openCL.setKernel("kernels.cl", "ProcessarPontos");
 
-    int x = 8, y = 8, z = 16;
+    int x = 100, y = 100, z = 100;
     int tam = x * y * z * MALHA_TOTAL_CELULAS;  // Tamanho correto da malha
     int *parametros = new int[NUMERO_PARAMETROS_MALHA];
     float *malha = new float[tam];  // Alocar a malha corretamente
@@ -154,7 +154,7 @@ int main(int argc, char** argv) {
         }
 
 		if(x % 1000 == 0)
-		openCL.Probing();
+		openCL.LoadBalancing();
 
 
 		openCL.ExecuteKernel();
@@ -163,9 +163,9 @@ int main(int argc, char** argv) {
         
     }
 
-	openCL.GatherResults(bMemObj, malhaAux);
+	//openCL.GatherResults(bMemObj, malhaAux);
 	
-        LerPontosHIS(malhaAux, parametros);
+       // LerPontosHIS(malhaAux, parametros);
 	  
 	double tempoFim = MPI_Wtime();
 	std::cout<<"Tempo execução:"<<tempoFim-tempoInicio<<std::endl;
