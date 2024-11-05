@@ -54,97 +54,181 @@ __constant float mu1 = 0.07, mu2 = 0.02, mu3 = 0.7;
 __constant float deltaX = 0.1, deltaY = 0.1, deltaZ = 0.1;
 
 // Função de Laplace para difusão
-float Laplaciano(int celulaOffset, float *celulas, int xPosicaoGlobal, int yPosicaoGlobal, int zPosicaoGlobal, __constant int *parametrosMalhaGPU) {
-    return ((xPosicaoGlobal > 0 && xPosicaoGlobal < parametrosMalhaGPU[MALHA_DIMENSAO_X]-1) ? 
-           (celulas[celulaOffset + CELULAS_POSICAO_XP_OFFSET] - 2 * celulas[celulaOffset + CELULAS_POSICAO_OR_OFFSET] + celulas[celulaOffset + CELULAS_POSICAO_XM_OFFSET]) / (deltaX * deltaX) : 0.0f) +
-           ((yPosicaoGlobal > 0 && yPosicaoGlobal < parametrosMalhaGPU[MALHA_DIMENSAO_Y]-1) ? 
-           (celulas[celulaOffset + CELULAS_POSICAO_YP_OFFSET] - 2 * celulas[celulaOffset + CELULAS_POSICAO_OR_OFFSET] + celulas[celulaOffset + CELULAS_POSICAO_YM_OFFSET]) / (deltaY * deltaY) : 0.0f) +
-           ((zPosicaoGlobal > 0 && zPosicaoGlobal < parametrosMalhaGPU[MALHA_DIMENSAO_Z]-1) ? 
-           (celulas[celulaOffset + CELULAS_POSICAO_ZP_OFFSET] - 2 * celulas[celulaOffset + CELULAS_POSICAO_OR_OFFSET] + celulas[celulaOffset + CELULAS_POSICAO_ZM_OFFSET]) / (deltaZ * deltaZ) : 0.0f);
+float Laplaciano(int celulaOffset, float *celulas, int xPosicaoGlobal, int yPosicaoGlobal, int zPosicaoGlobal, __constant int *parametrosMalhaGPU)
+{
+    return 
+        // Componente X
+        (xPosicaoGlobal > 0 && xPosicaoGlobal < (parametrosMalhaGPU[MALHA_DIMENSAO_X] - 1)) 
+        ? (celulas[celulaOffset + CELULAS_POSICAO_XP_OFFSET] 
+           - 2 * celulas[celulaOffset + CELULAS_POSICAO_OR_OFFSET] 
+           + celulas[celulaOffset + CELULAS_POSICAO_XM_OFFSET]) / (deltaX * deltaX) 
+        : ((((parametrosMalhaGPU[MALHA_DIMENSAO_X] - 1) - xPosicaoGlobal) / (float)(parametrosMalhaGPU[MALHA_DIMENSAO_X] - 1)) 
+           * ((celulas[celulaOffset + CELULAS_POSICAO_XP_OFFSET] - celulas[celulaOffset + CELULAS_POSICAO_OR_OFFSET]) / (deltaX * deltaX)) 
+           + (xPosicaoGlobal / (float)(parametrosMalhaGPU[MALHA_DIMENSAO_X] - 1)) 
+           * ((celulas[celulaOffset + CELULAS_POSICAO_XM_OFFSET] - celulas[celulaOffset + CELULAS_POSICAO_OR_OFFSET]) / (deltaX * deltaX)))
+
+        // Componente Y
+        + ((yPosicaoGlobal > 0 && yPosicaoGlobal < (parametrosMalhaGPU[MALHA_DIMENSAO_Y] - 1)) 
+        ? (celulas[celulaOffset + CELULAS_POSICAO_YP_OFFSET] 
+           - 2 * celulas[celulaOffset + CELULAS_POSICAO_OR_OFFSET] 
+           + celulas[celulaOffset + CELULAS_POSICAO_YM_OFFSET]) / (deltaY * deltaY)
+        : ((((parametrosMalhaGPU[MALHA_DIMENSAO_Y] - 1) - yPosicaoGlobal) / (float)(parametrosMalhaGPU[MALHA_DIMENSAO_Y] - 1)) 
+           * ((celulas[celulaOffset + CELULAS_POSICAO_YP_OFFSET] - celulas[celulaOffset + CELULAS_POSICAO_OR_OFFSET]) / (deltaY * deltaY)) 
+           + (yPosicaoGlobal / (float)(parametrosMalhaGPU[MALHA_DIMENSAO_Y] - 1)) 
+           * ((celulas[celulaOffset + CELULAS_POSICAO_YM_OFFSET] - celulas[celulaOffset + CELULAS_POSICAO_OR_OFFSET]) / (deltaY * deltaY))))
+
+        // Componente Z
+        + ((zPosicaoGlobal > 0 && zPosicaoGlobal < (parametrosMalhaGPU[MALHA_DIMENSAO_Z] - 1)) 
+        ? (celulas[celulaOffset + CELULAS_POSICAO_ZP_OFFSET] 
+           - 2 * celulas[celulaOffset + CELULAS_POSICAO_OR_OFFSET] 
+           + celulas[celulaOffset + CELULAS_POSICAO_ZM_OFFSET]) / (deltaZ * deltaZ)
+        : ((((parametrosMalhaGPU[MALHA_DIMENSAO_Z] - 1) - zPosicaoGlobal) / (float)(parametrosMalhaGPU[MALHA_DIMENSAO_Z] - 1)) 
+           * ((celulas[celulaOffset + CELULAS_POSICAO_ZP_OFFSET] - celulas[celulaOffset + CELULAS_POSICAO_OR_OFFSET]) / (deltaZ * deltaZ)) 
+           + (zPosicaoGlobal / (float)(parametrosMalhaGPU[MALHA_DIMENSAO_Z] - 1)) 
+           * ((celulas[celulaOffset + CELULAS_POSICAO_ZM_OFFSET] - celulas[celulaOffset + CELULAS_POSICAO_OR_OFFSET]) / (deltaZ * deltaZ))));
 }
 
-// Função para resolver as EDOs fracionárias de Caputo
-void CalcularPontos(float *celulas, int xPosicaoGlobal, int yPosicaoGlobal, int zPosicaoGlobal, __constant int *parametrosMalhaGPU) {
-    // Valores de cada célula na posição atual da malha
-    float L = celulas[CELULA_L * CELULAS_SINGLE_CELL_SIZEOF + CELULAS_POSICAO_OR_OFFSET];
-    float M = celulas[CELULA_M * CELULAS_SINGLE_CELL_SIZEOF + CELULAS_POSICAO_OR_OFFSET];
-    float S = celulas[CELULA_S * CELULAS_SINGLE_CELL_SIZEOF + CELULAS_POSICAO_OR_OFFSET];
-    float W = celulas[CELULA_W * CELULAS_SINGLE_CELL_SIZEOF + CELULAS_POSICAO_OR_OFFSET];
-    float K = celulas[CELULA_K * CELULAS_SINGLE_CELL_SIZEOF + CELULAS_POSICAO_OR_OFFSET];  // Queratinócito fixo
 
-    // Equações diferenciais para L, M, S e W com base no modelo
-    float dL_dt = r1 * L * (1 - L / k1) + gamma1 * L * S / (gamma2 + S) - beta1 * L * M - mu1 * L;
-    float dM_dt = r2 * M * (1 - M / k2) - beta2 * L * M - mu2 * M;
-    float dS_dt = (theta1 + W) * L * S / (theta2 + S) + theta3 * S - mu3 * S;
-    float dW_dt = -gamma3 * W;
-    
-    // Aplicar difusão às células L, M, S e W
-    dL_dt += Laplaciano(CELULA_L * CELULAS_SINGLE_CELL_SIZEOF, celulas, xPosicaoGlobal, yPosicaoGlobal, zPosicaoGlobal, parametrosMalhaGPU);
-    dM_dt += Laplaciano(CELULA_M * CELULAS_SINGLE_CELL_SIZEOF, celulas, xPosicaoGlobal, yPosicaoGlobal, zPosicaoGlobal, parametrosMalhaGPU);
-    dS_dt += Laplaciano(CELULA_S * CELULAS_SINGLE_CELL_SIZEOF, celulas, xPosicaoGlobal, yPosicaoGlobal, zPosicaoGlobal, parametrosMalhaGPU);
-    dW_dt += Laplaciano(CELULA_W * CELULAS_SINGLE_CELL_SIZEOF, celulas, xPosicaoGlobal, yPosicaoGlobal, zPosicaoGlobal, parametrosMalhaGPU);
+float Quimiotaxia(int celulaOffset, float *celulas, int xPosicaoGlobal, int yPosicaoGlobal, int zPosicaoGlobal, __constant int *parametrosMalhaGPU)
+{
+    return 
+        // Componente X
+        ((xPosicaoGlobal > 0) 
+            ? ((celulas[CELULAS_S_OFFSET + CELULAS_POSICAO_OR_OFFSET] - celulas[CELULAS_S_OFFSET + CELULAS_POSICAO_XM_OFFSET]) > 0 
+                ? -(celulas[CELULAS_S_OFFSET + CELULAS_POSICAO_OR_OFFSET] - celulas[CELULAS_S_OFFSET + CELULAS_POSICAO_XM_OFFSET]) 
+                  * celulas[celulaOffset + CELULAS_POSICAO_XM_OFFSET] / deltaX
+                : -(celulas[CELULAS_S_OFFSET + CELULAS_POSICAO_OR_OFFSET] - celulas[CELULAS_S_OFFSET + CELULAS_POSICAO_XM_OFFSET]) 
+                  * celulas[celulaOffset + CELULAS_POSICAO_OR_OFFSET] / deltaX)
+            : 0.0f)
+        + ((xPosicaoGlobal < parametrosMalhaGPU[MALHA_DIMENSAO_X] - 1) 
+            ? ((celulas[CELULAS_S_OFFSET + CELULAS_POSICAO_XP_OFFSET] - celulas[CELULAS_S_OFFSET + CELULAS_POSICAO_OR_OFFSET]) > 0 
+                ? (celulas[CELULAS_S_OFFSET + CELULAS_POSICAO_XP_OFFSET] - celulas[CELULAS_S_OFFSET + CELULAS_POSICAO_OR_OFFSET]) 
+                  * celulas[celulaOffset + CELULAS_POSICAO_OR_OFFSET] / deltaX
+                : (celulas[CELULAS_S_OFFSET + CELULAS_POSICAO_XP_OFFSET] - celulas[CELULAS_S_OFFSET + CELULAS_POSICAO_OR_OFFSET]) 
+                  * celulas[celulaOffset + CELULAS_POSICAO_XP_OFFSET] / deltaX)
+            : 0.0f)) / deltaX
 
-    // Atualizar novos valores
-    celulas[CELULA_L * CELULAS_SINGLE_CELL_SIZEOF + CELULAS_NOVO_VALOR_OFFSET] = L + deltaT * dL_dt;
-    celulas[CELULA_M * CELULAS_SINGLE_CELL_SIZEOF + CELULAS_NOVO_VALOR_OFFSET] = M + deltaT * dM_dt;
-    celulas[CELULA_S * CELULAS_SINGLE_CELL_SIZEOF + CELULAS_NOVO_VALOR_OFFSET] = S + deltaT * dS_dt;
-    celulas[CELULA_W * CELULAS_SINGLE_CELL_SIZEOF + CELULAS_NOVO_VALOR_OFFSET] = W + deltaT * dW_dt;
+        // Componente Y
+        + ((yPosicaoGlobal > 0) 
+            ? ((celulas[CELULAS_S_OFFSET + CELULAS_POSICAO_OR_OFFSET] - celulas[CELULAS_S_OFFSET + CELULAS_POSICAO_YM_OFFSET]) > 0 
+                ? -(celulas[CELULAS_S_OFFSET + CELULAS_POSICAO_OR_OFFSET] - celulas[CELULAS_S_OFFSET + CELULAS_POSICAO_YM_OFFSET]) 
+                  * celulas[celulaOffset + CELULAS_POSICAO_YM_OFFSET] / deltaY
+                : -(celulas[CELULAS_S_OFFSET + CELULAS_POSICAO_OR_OFFSET] - celulas[CELULAS_S_OFFSET + CELULAS_POSICAO_YM_OFFSET]) 
+                  * celulas[celulaOffset + CELULAS_POSICAO_OR_OFFSET] / deltaY)
+            : 0.0f)
+        + ((yPosicaoGlobal < parametrosMalhaGPU[MALHA_DIMENSAO_Y] - 1) 
+            ? ((celulas[CELULAS_S_OFFSET + CELULAS_POSICAO_YP_OFFSET] - celulas[CELULAS_S_OFFSET + CELULAS_POSICAO_OR_OFFSET]) > 0 
+                ? (celulas[CELULAS_S_OFFSET + CELULAS_POSICAO_YP_OFFSET] - celulas[CELULAS_S_OFFSET + CELULAS_POSICAO_OR_OFFSET]) 
+                  * celulas[celulaOffset + CELULAS_POSICAO_OR_OFFSET] / deltaY
+                : (celulas[CELULAS_S_OFFSET + CELULAS_POSICAO_YP_OFFSET] - celulas[CELULAS_S_OFFSET + CELULAS_POSICAO_OR_OFFSET]) 
+                  * celulas[celulaOffset + CELULAS_POSICAO_YP_OFFSET] / deltaY)
+            : 0.0f)) / deltaY
+
+        // Componente Z
+        + ((zPosicaoGlobal > 0) 
+            ? ((celulas[CELULAS_S_OFFSET + CELULAS_POSICAO_OR_OFFSET] - celulas[CELULAS_S_OFFSET + CELULAS_POSICAO_ZM_OFFSET]) > 0 
+                ? -(celulas[CELULAS_S_OFFSET + CELULAS_POSICAO_OR_OFFSET] - celulas[CELULAS_S_OFFSET + CELULAS_POSICAO_ZM_OFFSET]) 
+                  * celulas[celulaOffset + CELULAS_POSICAO_ZM_OFFSET] / deltaZ
+                : -(celulas[CELULAS_S_OFFSET + CELULAS_POSICAO_OR_OFFSET] - celulas[CELULAS_S_OFFSET + CELULAS_POSICAO_ZM_OFFSET]) 
+                  * celulas[celulaOffset + CELULAS_POSICAO_OR_OFFSET] / deltaZ)
+            : 0.0f)
+        + ((zPosicaoGlobal < parametrosMalhaGPU[MALHA_DIMENSAO_Z] - 1) 
+            ? ((celulas[CELULAS_S_OFFSET + CELULAS_POSICAO_ZP_OFFSET] - celulas[CELULAS_S_OFFSET + CELULAS_POSICAO_OR_OFFSET]) > 0 
+                ? (celulas[CELULAS_S_OFFSET + CELULAS_POSICAO_ZP_OFFSET] - celulas[CELULAS_S_OFFSET + CELULAS_POSICAO_OR_OFFSET]) 
+                  * celulas[celulaOffset + CELULAS_POSICAO_OR_OFFSET] / deltaZ
+                : (celulas[CELULAS_S_OFFSET + CELULAS_POSICAO_ZP_OFFSET] - celulas[CELULAS_S_OFFSET + CELULAS_POSICAO_OR_OFFSET]) 
+                  * celulas[celulaOffset + CELULAS_POSICAO_ZP_OFFSET] / deltaZ)
+            : 0.0f)) / deltaZ;
 }
+
+
+void CalcularPontos(float *celulas, int xPosicaoGlobal, int yPosicaoGlobal, int zPosicaoGlobal, __constant int *parametrosMalhaGPU)
+{
+    // Célula L (célula T) - Aplica difusão e quimiotaxia em direção a S
+    float dL_dt = r1 * celulas[CELULAS_L_OFFSET + CELULAS_POSICAO_OR_OFFSET] * (1 - celulas[CELULAS_L_OFFSET + CELULAS_POSICAO_OR_OFFSET] / k1)
+                  + gamma1 * celulas[CELULAS_L_OFFSET + CELULAS_POSICAO_OR_OFFSET] * celulas[CELULAS_S_OFFSET + CELULAS_POSICAO_OR_OFFSET] 
+                    / (gamma2 + celulas[CELULAS_S_OFFSET + CELULAS_POSICAO_OR_OFFSET])
+                  - beta1 * celulas[CELULAS_L_OFFSET + CELULAS_POSICAO_OR_OFFSET] * celulas[CELULAS_M_OFFSET + CELULAS_POSICAO_OR_OFFSET]
+                  - mu1 * celulas[CELULAS_L_OFFSET + CELULAS_POSICAO_OR_OFFSET]
+                  + Laplaciano(CELULAS_L_OFFSET, celulas, xPosicaoGlobal, yPosicaoGlobal, zPosicaoGlobal, parametrosMalhaGPU)
+                  - Quimiotaxia(CELULAS_L_OFFSET, celulas, xPosicaoGlobal, yPosicaoGlobal, zPosicaoGlobal, parametrosMalhaGPU);
+
+    // Célula M (célula dendrítica) - Aplica difusão e quimiotaxia em direção a S
+    float dM_dt = r2 * celulas[CELULAS_M_OFFSET + CELULAS_POSICAO_OR_OFFSET] * (1 - celulas[CELULAS_M_OFFSET + CELULAS_POSICAO_OR_OFFSET] / k2)
+                  - beta2 * celulas[CELULAS_L_OFFSET + CELULAS_POSICAO_OR_OFFSET] * celulas[CELULAS_M_OFFSET + CELULAS_POSICAO_OR_OFFSET]
+                  - mu2 * celulas[CELULAS_M_OFFSET + CELULAS_POSICAO_OR_OFFSET]
+                  + Laplaciano(CELULAS_M_OFFSET, celulas, xPosicaoGlobal, yPosicaoGlobal, zPosicaoGlobal, parametrosMalhaGPU)
+                  - Quimiotaxia(CELULAS_M_OFFSET, celulas, xPosicaoGlobal, yPosicaoGlobal, zPosicaoGlobal, parametrosMalhaGPU);
+
+    // Célula S (citocina) - Apenas difusão
+    float dS_dt = (theta1 + celulas[CELULAS_W_OFFSET + CELULAS_POSICAO_OR_OFFSET]) * celulas[CELULAS_L_OFFSET + CELULAS_POSICAO_OR_OFFSET] 
+                  * celulas[CELULAS_S_OFFSET + CELULAS_POSICAO_OR_OFFSET] / (theta2 + celulas[CELULAS_S_OFFSET + CELULAS_POSICAO_OR_OFFSET]) 
+                  + theta3 * celulas[CELULAS_S_OFFSET + CELULAS_POSICAO_OR_OFFSET] - mu3 * celulas[CELULAS_S_OFFSET + CELULAS_POSICAO_OR_OFFSET]
+                  + Laplaciano(CELULAS_S_OFFSET, celulas, xPosicaoGlobal, yPosicaoGlobal, zPosicaoGlobal, parametrosMalhaGPU);
+
+    // Célula W (medicamento imunológico) - Apenas difusão
+    float dW_dt = -gamma3 * celulas[CELULAS_W_OFFSET + CELULAS_POSICAO_OR_OFFSET]
+                  + Laplaciano(CELULAS_W_OFFSET, celulas, xPosicaoGlobal, yPosicaoGlobal, zPosicaoGlobal, parametrosMalhaGPU);
+
+    // Atualizar novos valores das células
+    celulas[CELULAS_L_OFFSET + CELULAS_NOVO_VALOR_OFFSET] = max(0.0f, celulas[CELULAS_L_OFFSET + CELULAS_POSICAO_OR_OFFSET] + deltaT * dL_dt);
+    celulas[CELULAS_M_OFFSET + CELULAS_NOVO_VALOR_OFFSET] = max(0.0f, celulas[CELULAS_M_OFFSET + CELULAS_POSICAO_OR_OFFSET] + deltaT * dM_dt);
+    celulas[CELULAS_S_OFFSET + CELULAS_NOVO_VALOR_OFFSET] = max(0.0f, celulas[CELULAS_S_OFFSET + CELULAS_POSICAO_OR_OFFSET] + deltaT * dS_dt);
+    celulas[CELULAS_W_OFFSET + CELULAS_NOVO_VALOR_OFFSET] = max(0.0f, celulas[CELULAS_W_OFFSET + CELULAS_POSICAO_OR_OFFSET] + deltaT * dW_dt);
+
+    // O queratinócito (K) permanece no centro da malha e não é atualizado em cada passo de tempo
+    celulas[CELULAS_K_OFFSET + CELULAS_NOVO_VALOR_OFFSET] = celulas[CELULAS_K_OFFSET + CELULAS_POSICAO_OR_OFFSET];
+}
+
+
 
 // Kernel principal para processar os pontos da malha
-__kernel void ProcessarPontos(__global float *malhaPrincipalAtual, __global float *malhaPrincipalAnterior, __constant int *parametrosMalhaGPU) {
+__kernel void ProcessarPontos(__global float *malhaPrincipalAtual, __global float *malhaPrincipalAnterior, __constant int *parametrosMalhaGPU)
+{
     int globalThreadID = get_global_id(0);
 
     float celulas[CELULAS_SIZEOF];
 
     // Descobrir posição 3D local na malha
-    int zPosicaoGlobal = globalThreadID / (parametrosMalhaGPU[MALHA_DIMENSAO_Y] * parametrosMalhaGPU[MALHA_DIMENSAO_X]);
-    int yPosicaoGlobal = (globalThreadID % (parametrosMalhaGPU[MALHA_DIMENSAO_Y] * parametrosMalhaGPU[MALHA_DIMENSAO_X])) / parametrosMalhaGPU[MALHA_DIMENSAO_X];
-    int xPosicaoGlobal = (globalThreadID % (parametrosMalhaGPU[MALHA_DIMENSAO_Y] * parametrosMalhaGPU[MALHA_DIMENSAO_X])) % parametrosMalhaGPU[MALHA_DIMENSAO_X];
+    int posicaoGlobalZ = (globalThreadID / (parametrosMalhaGPU[MALHA_DIMENSAO_Y] * parametrosMalhaGPU[MALHA_DIMENSAO_X]));
+    int posicaoGlobalY = (globalThreadID % (parametrosMalhaGPU[MALHA_DIMENSAO_Y] * parametrosMalhaGPU[MALHA_DIMENSAO_X])) / parametrosMalhaGPU[MALHA_DIMENSAO_X];
+    int posicaoGlobalX = (globalThreadID % (parametrosMalhaGPU[MALHA_DIMENSAO_Y] * parametrosMalhaGPU[MALHA_DIMENSAO_X])) % parametrosMalhaGPU[MALHA_DIMENSAO_X];
 
-    if (zPosicaoGlobal >= parametrosMalhaGPU[MALHA_DIMENSAO_Z]) {
+    if (posicaoGlobalZ >= parametrosMalhaGPU[MALHA_DIMENSAO_Z]) {
         return;
     }
 
-    // Preencher o array de células com dados da malha anterior
-    int malhaIndex = zPosicaoGlobal * parametrosMalhaGPU[MALHA_DIMENSAO_POSICAO_Z] +
-                     yPosicaoGlobal * parametrosMalhaGPU[MALHA_DIMENSAO_POSICAO_Y] +
-                     xPosicaoGlobal * parametrosMalhaGPU[MALHA_DIMENSAO_POSICAO_X];
+    // Preencher células para calcular EDO's
+    int malhaIndex = ((posicaoGlobalZ) * parametrosMalhaGPU[MALHA_DIMENSAO_POSICAO_Z]) 
+                    + ((posicaoGlobalY) * parametrosMalhaGPU[MALHA_DIMENSAO_POSICAO_Y]) 
+                    + ((posicaoGlobalX) * parametrosMalhaGPU[MALHA_DIMENSAO_POSICAO_X]);
 
     for (int count = 0; count < MALHA_TOTAL_CELULAS; count++) {
-        // Origem da célula
-        celulas[(count * CELULAS_SINGLE_CELL_SIZEOF) + CELULAS_POSICAO_OR_OFFSET] = 
-            malhaPrincipalAnterior[malhaIndex + (count * parametrosMalhaGPU[MALHA_DIMENSAO_CELULAS])];
+        // Origem
+        celulas[(count * CELULAS_SINGLE_CELL_SIZEOF) + CELULAS_POSICAO_OR_OFFSET] = malhaPrincipalAnterior[malhaIndex + (count * parametrosMalhaGPU[MALHA_DIMENSAO_CELULAS])];
 
-        // Posições vizinhas (ZP, ZM, XP, XM, YP, YM)
-        celulas[(count * CELULAS_SINGLE_CELL_SIZEOF) + CELULAS_POSICAO_ZP_OFFSET] = 
-            (zPosicaoGlobal + 1 < parametrosMalhaGPU[MALHA_DIMENSAO_Z]) ? 
-                malhaPrincipalAnterior[malhaIndex + ((count * parametrosMalhaGPU[MALHA_DIMENSAO_CELULAS]) + parametrosMalhaGPU[MALHA_DIMENSAO_POSICAO_Z])] : 0.0f;
-        celulas[(count * CELULAS_SINGLE_CELL_SIZEOF) + CELULAS_POSICAO_ZM_OFFSET] = 
-            (zPosicaoGlobal - 1 >= 0) ? 
-                malhaPrincipalAnterior[malhaIndex + ((count * parametrosMalhaGPU[MALHA_DIMENSAO_CELULAS]) - parametrosMalhaGPU[MALHA_DIMENSAO_POSICAO_Z])] : 0.0f;
+        // Vizinhança
+        celulas[(count * CELULAS_SINGLE_CELL_SIZEOF) + CELULAS_POSICAO_ZP_OFFSET] = ((posicaoGlobalZ + 1 < parametrosMalhaGPU[MALHA_DIMENSAO_Z])) 
+        ? malhaPrincipalAnterior[malhaIndex + ((count) * parametrosMalhaGPU[MALHA_DIMENSAO_CELULAS]) + ((+1) * parametrosMalhaGPU[MALHA_DIMENSAO_POSICAO_Z])] : 0.0f;
+        celulas[(count * CELULAS_SINGLE_CELL_SIZEOF) + CELULAS_POSICAO_ZM_OFFSET] = ((posicaoGlobalZ - 1 >= 0)) 
+        ? malhaPrincipalAnterior[malhaIndex + ((count) * parametrosMalhaGPU[MALHA_DIMENSAO_CELULAS]) + ((-1) * parametrosMalhaGPU[MALHA_DIMENSAO_POSICAO_Z])] : 0.0f;
 
-        celulas[(count * CELULAS_SINGLE_CELL_SIZEOF) + CELULAS_POSICAO_XP_OFFSET] = 
-            (xPosicaoGlobal + 1 < parametrosMalhaGPU[MALHA_DIMENSAO_X]) ? 
-                malhaPrincipalAnterior[malhaIndex + ((count * parametrosMalhaGPU[MALHA_DIMENSAO_CELULAS]) + parametrosMalhaGPU[MALHA_DIMENSAO_POSICAO_X])] : 0.0f;
-        celulas[(count * CELULAS_SINGLE_CELL_SIZEOF) + CELULAS_POSICAO_XM_OFFSET] = 
-            (xPosicaoGlobal - 1 >= 0) ? 
-                malhaPrincipalAnterior[malhaIndex + ((count * parametrosMalhaGPU[MALHA_DIMENSAO_CELULAS]) - parametrosMalhaGPU[MALHA_DIMENSAO_POSICAO_X])] : 0.0f;
+        celulas[(count * CELULAS_SINGLE_CELL_SIZEOF) + CELULAS_POSICAO_XP_OFFSET] = ((posicaoGlobalX + 1 < parametrosMalhaGPU[MALHA_DIMENSAO_X])) 
+        ? malhaPrincipalAnterior[malhaIndex + ((count) * parametrosMalhaGPU[MALHA_DIMENSAO_CELULAS]) + ((+1) * parametrosMalhaGPU[MALHA_DIMENSAO_POSICAO_X])] : 0.0f;
+        celulas[(count * CELULAS_SINGLE_CELL_SIZEOF) + CELULAS_POSICAO_XM_OFFSET] = ((posicaoGlobalX - 1 >= 0)) 
+        ? malhaPrincipalAnterior[malhaIndex + ((count) * parametrosMalhaGPU[MALHA_DIMENSAO_CELULAS]) + ((-1) * parametrosMalhaGPU[MALHA_DIMENSAO_POSICAO_X])] : 0.0f;
 
-        celulas[(count * CELULAS_SINGLE_CELL_SIZEOF) + CELULAS_POSICAO_YP_OFFSET] = 
-            (yPosicaoGlobal + 1 < parametrosMalhaGPU[MALHA_DIMENSAO_Y]) ? 
-                malhaPrincipalAnterior[malhaIndex + ((count * parametrosMalhaGPU[MALHA_DIMENSAO_CELULAS]) + parametrosMalhaGPU[MALHA_DIMENSAO_POSICAO_Y])] : 0.0f;
-        celulas[(count * CELULAS_SINGLE_CELL_SIZEOF) + CELULAS_POSICAO_YM_OFFSET] = 
-            (yPosicaoGlobal - 1 >= 0) ? 
-                malhaPrincipalAnterior[malhaIndex + ((count * parametrosMalhaGPU[MALHA_DIMENSAO_CELULAS]) - parametrosMalhaGPU[MALHA_DIMENSAO_POSICAO_Y])] : 0.0f;
+        celulas[(count * CELULAS_SINGLE_CELL_SIZEOF) + CELULAS_POSICAO_YP_OFFSET] = ((posicaoGlobalY + 1 < parametrosMalhaGPU[MALHA_DIMENSAO_Y])) 
+        ? malhaPrincipalAnterior[malhaIndex + ((count) * parametrosMalhaGPU[MALHA_DIMENSAO_CELULAS]) + ((+1) * parametrosMalhaGPU[MALHA_DIMENSAO_POSICAO_Y])] : 0.0f;
+        celulas[(count * CELULAS_SINGLE_CELL_SIZEOF) + CELULAS_POSICAO_YM_OFFSET] = ((posicaoGlobalY - 1 >= 0)) 
+        ? malhaPrincipalAnterior[malhaIndex + ((count) * parametrosMalhaGPU[MALHA_DIMENSAO_CELULAS]) + ((-1) * parametrosMalhaGPU[MALHA_DIMENSAO_POSICAO_Y])] : 0.0f;
     }
 
-    // Calcular novos valores para as células
-    CalcularPontos(celulas, xPosicaoGlobal, yPosicaoGlobal, zPosicaoGlobal, parametrosMalhaGPU);
+    // Calcular novos valores das células
+    CalcularPontos(celulas, posicaoGlobalX, posicaoGlobalY, posicaoGlobalZ, parametrosMalhaGPU);
 
-    // Atualizar malha com novos valores calculados
+    // Atualizar malha com pontos calculados
     for (int count = 0; count < MALHA_TOTAL_CELULAS; count++) {
-        malhaPrincipalAtual[malhaIndex + (count * parametrosMalhaGPU[MALHA_DIMENSAO_CELULAS])] = 
-            celulas[(count * CELULAS_SINGLE_CELL_SIZEOF) + CELULAS_NOVO_VALOR_OFFSET];
+        malhaPrincipalAtual[malhaIndex + ((count) * parametrosMalhaGPU[MALHA_DIMENSAO_CELULAS])] = celulas[(count * CELULAS_SINGLE_CELL_SIZEOF) + CELULAS_NOVO_VALOR_OFFSET];
     }
 }
