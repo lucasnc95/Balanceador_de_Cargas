@@ -97,14 +97,39 @@ std::cout<<"Cells printed: "<<counter<<std::endl;
 
 
 
+void evoluirMalha(std::vector<float>& malhaAtual, std::vector<float>& malhaAnterior, int dimX, int dimY, int dimZ) {
+    // Itera sobre todas as células da malha
+    for (int z = 0; z < dimZ; ++z) {
+        for (int y = 0; y < dimY; ++y) {
+            for (int x = 0; x < dimX; ++x) {
+                // Índice linear da célula atual
+                int index = z * dimY * dimX + y * dimX + x;
+
+                // Valores das células vizinhas, considerando condições de borda
+                float centro = malhaAnterior[index];
+                float xp = (x < dimX - 1) ? malhaAnterior[index + 1] : centro;
+                float xm = (x > 0) ? malhaAnterior[index - 1] : centro;
+                float yp = (y < dimY - 1) ? malhaAnterior[index + dimX] : centro;
+                float ym = (y > 0) ? malhaAnterior[index - dimX] : centro;
+                float zp = (z < dimZ - 1) ? malhaAnterior[index + dimY * dimX] : centro;
+                float zm = (z > 0) ? malhaAnterior[index - dimY * dimX] : centro;
+
+                // Soma dos valores das vizinhas e da célula central
+                malhaAtual[index] += centro + xp + xm + yp + ym + zp + zm;
+            }
+        }
+    }
+}
+
+
 
 int main(int argc, char** argv) {
      
     OpenCLWrapper openCL(argc, argv);
     openCL.InitDevices("ALL_DEVICES", 10);  
-    openCL.setKernel("kernels.cl", "ProcessarPontos");
+    openCL.setKernel("kernel_teste.cl", "kernelSomaVizinhos");
 
-    int x = 100, y = 100, z = 100;
+    int x = 6, y = 6, z = 6;
     int tam = x * y * z * MALHA_TOTAL_CELULAS;  // Tamanho correto da malha
     int *parametros = new int[NUMERO_PARAMETROS_MALHA];
     float *malha = new float[tam];  // Alocar a malha corretamente
@@ -113,7 +138,9 @@ int main(int argc, char** argv) {
     InicializarParametrosMalhaHIS(parametros, 0, (x * y * z), x, y, z);
 
    
-    InicializarPontosHIS(malha, parametros);
+    //InicializarPontosHIS(malha, parametros);
+	for(int i = 0; i < tam; i++)
+	malha[i] = 1;
 	int total_elements = x*y*z;
 
     // Configuração do balanceador de carga no OpenCLWrapper
@@ -137,36 +164,57 @@ int main(int argc, char** argv) {
 	openCL.setAttribute(2, aMemObj);
     openCL.setSubdomainBoundary(sub, 2, vetArgs);
 	openCL.setBalancingTargetID(bMemObj);
-	openCL.Probing();
-    for (int x = 0; x < 10000; x++) {
-		
-	openCL.GatherResults(bMemObj, malhaAux);
-	openCL.WriteObject(cMemObj, (char *) malhaAux, 0, tam*sizeof(float));
+	//openCL.Probing();
+    for (int x = 0; x < 10; x++) {
 		 if (x % 2 == 0) {
             openCL.setAttribute(0, bMemObj);
             openCL.setAttribute(1, cMemObj);
-            openCL.setBalancingTargetID(bMemObj);
+           openCL.setBalancingTargetID(bMemObj);
         } 
 		else {
             openCL.setAttribute(0, cMemObj);
             openCL.setAttribute(1, bMemObj);
             openCL.setBalancingTargetID(cMemObj);
         }
+		// if(x % 1000 == 0)
+		// openCL.LoadBalancing();
 
-		if(x % 1000 == 0)
-		openCL.LoadBalancing();
-
-
-		openCL.ExecuteKernel();
-		
-		
-        
+		openCL.ExecuteKernel();        
     }
 
-	//openCL.GatherResults(bMemObj, malhaAux);
+		openCL.GatherResults(bMemObj, malhaAux);
 	
-       // LerPontosHIS(malhaAux, parametros);
-	  
+       	// LerPontosHIS(malhaAux, parametros);
+		std::vector<float> malhaAnterior(tam, 1.0f);
+    	std::vector<float> malhaAtual(tam, 1.0f);
+		
+		for(int i = 0; i < tam; i++){
+		malhaAtual[i] = 1;
+		malhaAnterior[i] = 1;}
+
+		for (int i = 0; i < 10; ++i) {
+        evoluirMalha(malhaAtual, malhaAnterior, x, y, z);
+
+        // Troca as malhas para a próxima iteração
+        std::swap(malhaAtual, malhaAnterior);
+    }
+	   for(int i = 0; i < tam; i++){
+		if(i % 5 == 0)
+		std::cout<<std::endl;
+		
+		std::cout<<malhaAux[i]<<" ";
+		
+
+	   }
+	  std::cout<<std::endl;
+	  for(int i = 0; i < tam; i++){
+		if(i % 5 == 0)
+		std::cout<<std::endl;
+		std::cout<<malhaAtual[i]<<" ";
+		
+		 }
+		std::cout<<std::endl;
+
 	double tempoFim = MPI_Wtime();
 	std::cout<<"Tempo execução:"<<tempoFim-tempoInicio<<std::endl;
     // Liberar memória alocada

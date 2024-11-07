@@ -47,15 +47,17 @@ int OpenCLWrapper::InitDevices(const std::string &_device_types, const unsigned 
 	memset(dispositivosLocal, 0, sizeof(int)*world_size);
 	dispositivosLocal[world_rank] = dispositivos;
     MPI_Allreduce(dispositivosLocal, dispositivosWorld, world_size, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
-    todosDispositivos = 0;
+    //MPI_Bcast(dispositivosWorld, world_size, MPI_INT, 0, MPI_COMM_WORLD);
+	todosDispositivos = 0;
 	
-	
+	std::cout<<"world size: "<<world_size<<std::endl;
 	for(int count = 0; count < world_size; count++)
 	{
 		if(count == world_rank)
-		{
+		{	std::cout<<"world rank: "<<world_rank<<std::endl;
 			meusDispositivosOffset = todosDispositivos;
 			meusDispositivosLength = dispositivosWorld[count];
+			std::cout<<"Meus dispositivos offset: "<<meusDispositivosOffset<<std::endl;
 		}
 		todosDispositivos += dispositivosWorld[count];
 	}
@@ -374,14 +376,14 @@ else {
 				}
 			}
 
-			//Sincronizacao da computação interna.
-			for(int count = 0; count < todosDispositivos; count++)
-			{
-				if(count >= meusDispositivosOffset && count < meusDispositivosOffset+meusDispositivosLength)
-				{
-					SynchronizeCommandQueue(count-meusDispositivosOffset);
-				}
-			}
+			// //Sincronizacao da computação interna.
+			// for(int count = 0; count < todosDispositivos; count++)
+			// {
+			// 	if(count >= meusDispositivosOffset && count < meusDispositivosOffset+meusDispositivosLength)
+			// 	{
+			// 		SynchronizeCommandQueue(count-meusDispositivosOffset);
+			// 	}
+			// }
 
                 
                 Comms();
@@ -402,7 +404,7 @@ for (int count = 0; count < todosDispositivos; count++) {
     if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength) {
         int auxCount = 0;
         // Ciclo para reorganizar os argumentos de acordo com a iteração
-           // std::cout<<"Iteration: "<<itCounter<<std::endl;
+           //std::cout<<"Iteration: "<<itCounter<<std::endl;
            
             // int id1 = GetDeviceMemoryObjectID(args[0], count);
             // int id2 = GetDeviceMemoryObjectID(args[1], count);
@@ -410,11 +412,13 @@ for (int count = 0; count < todosDispositivos; count++) {
             // {
             // SetKernelAttribute(count - meusDispositivosOffset, kernelDispositivo[count], 0, id1);
             // SetKernelAttribute(count - meusDispositivosOffset, kernelDispositivo[count], 1, id2);
+			// //SynchronizeCommandQueue(count-meusDispositivosOffset);
             // }
             // else
             // {
             // SetKernelAttribute(count - meusDispositivosOffset, kernelDispositivo[count], 0, id2);
-            // SetKernelAttribute(count - meusDispositivosOffset, kernelDispositivo[count], 1, id1);   
+            // SetKernelAttribute(count - meusDispositivosOffset, kernelDispositivo[count], 1, id1);
+			// //SynchronizeCommandQueue(count-meusDispositivosOffset);   
             // }
            
         // Executa o kernel para o dispositivo
@@ -428,16 +432,16 @@ for (int count = 0; count < todosDispositivos; count++) {
 
  }
     
-    for (int count = 0; count < todosDispositivos; count++) {
-        if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength) {
-            int deviceIndex2 = count - meusDispositivosOffset;
-            if (deviceIndex2 >= 0 && deviceIndex2 < todosDispositivos) {
-                SynchronizeCommandQueue(deviceIndex2);
-            } else {
-                std::cerr << "Invalid device index: " << deviceIndex2 << std::endl;
-            }
-        }
-    }
+    // for (int count = 0; count < todosDispositivos; count++) {
+    //     if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength) {
+    //         int deviceIndex2 = count - meusDispositivosOffset;
+    //         if (deviceIndex2 >= 0 && deviceIndex2 < todosDispositivos) {
+    //             SynchronizeCommandQueue(deviceIndex2);
+    //         } else {
+    //             std::cerr << "Invalid device index: " << deviceIndex2 << std::endl;
+    //         }
+    //     }
+    // }
     
    itCounter++;
     }
@@ -1413,8 +1417,7 @@ MPI_Request sendRequest, receiveRequest;
 							}
 							if(count == meusDispositivosOffset+meusDispositivosLength-1 && count < todosDispositivos-1)
 							{
-								malhaDevice[0]= GetDeviceMemoryObjectID(balancingTargetID, count);
-			
+								malhaDevice[0]= GetDeviceMemoryObjectID(balancingTargetID, count);		
 								borda[0] = int((offset[count]+length[count])-(tamanhoBorda));
 								borda[0] = (borda[0] < 0) ? 0 : borda[0];
 								borda[1] = int((offset[count]+length[count]));
@@ -1526,4 +1529,6 @@ MPI_Request sendRequest, receiveRequest;
 
 delete[] malha;
 }
+
+
 
