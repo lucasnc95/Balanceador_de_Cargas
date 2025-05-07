@@ -1,34 +1,16 @@
-__kernel void kernelSomaVizinhos(
-    __global float* malhaAtual,         // Malha que será atualizada
-    __global float* malhaAnterior,      // Malha da iteração anterior
-    __constant int* parametrosMalhaGPU) // Parâmetros da malha
-{
-    int dimX = parametrosMalhaGPU[2];
-    int dimY = parametrosMalhaGPU[3];
-    int dimZ = parametrosMalhaGPU[4];
-
-    int globalThreadID = get_global_id(0);
-    int posZ = globalThreadID / (dimY * dimX);
-    int posY = (globalThreadID % (dimY * dimX)) / dimX;
-    int posX = globalThreadID % dimX;
-
-    if (posZ >= dimZ) return;
-
-    // Índice linear da célula atual
-    int index = posZ * dimY * dimX + posY * dimX + posX;
-
-    // Valores das células vizinhas com condições de borda
-    float centro = malhaAnterior[index];
-    float xp = (posX < dimX - 1) ? malhaAnterior[index + 1] : centro;
-    float xm = (posX > 0) ? malhaAnterior[index - 1] : centro;
-    float yp = (posY < dimY - 1) ? malhaAnterior[index + dimX] : centro;
-    float ym = (posY > 0) ? malhaAnterior[index - dimX] : centro;
-    float zp = (posZ < dimZ - 1) ? malhaAnterior[index + dimY * dimX] : centro;
-    float zm = (posZ > 0) ? malhaAnterior[index - dimY * dimX] : centro;
-
-    // Soma dos valores das vizinhas e da célula central
-    float novoValor = centro + xp + xm + yp + ym + zp + zm;
-
-    // Armazena o valor atualizado
-    malhaAtual[index] += novoValor;
+// kernelSomaVizinhos.cl
+__kernel void kernelSomaVizinhos(__global float* vetor, __global float* vetor_aux) {
+    int N = 6;
+    int i = get_global_id(0);
+    if (i < N) {
+        float left  = (i > 0)     ? vetor_aux[i - 1] : 0.0f;
+        float right = (i < N - 1) ? vetor_aux[i + 1] : 0.0f;
+        float valor_atual = vetor_aux[i];
+        
+        // Imprimir informações: índice, valor atual, vizinho à esquerda e direita.
+       // printf("Indice: %d, Valor atual: %f, Left: %f, Right: %f\n", i, valor_atual, left, right);
+        
+        // Soma dos valores dos vizinhos com o valor atual.
+        vetor[i] = valor_atual + left + right;
+    }
 }

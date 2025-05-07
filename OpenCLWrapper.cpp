@@ -318,7 +318,7 @@ void OpenCLWrapper::SetKernelAttribute(int devicePosition, int kernelID, int att
 }
 
 
-int OpenCLWrapper::CreateMemoryObject(int devicePosition, size_t size, cl_mem_flags memoryType, void *hostMemory) {
+int OpenCLWrapper::CreateMemoryObject(int devicePosition, int size, cl_mem_flags memoryType, void *hostMemory) {
 	cl_int state;
 	if(devices[devicePosition].numberOfMemoryObjects < maxMemoryObjects)
 	{
@@ -343,110 +343,165 @@ int OpenCLWrapper::CreateMemoryObject(int devicePosition, size_t size, cl_mem_fl
 
 }
 
-void OpenCLWrapper::ExecuteKernel() {
+// void OpenCLWrapper::ExecuteKernel() {
   
- if(!sdSet){
-    for (int count = 0; count < todosDispositivos; count++) {
-        if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength) {
+//  if(!sdSet){
+//     for (int count = 0; count < todosDispositivos; count++) {
+//         if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength) {
 
             
             
-            int deviceIndex2 = count - meusDispositivosOffset;
-            if (deviceIndex2 >= 0 && deviceIndex2 < todosDispositivos) {
+//             int deviceIndex2 = count - meusDispositivosOffset;
+//             if (deviceIndex2 >= 0 && deviceIndex2 < todosDispositivos) {
                 
-                kernelEventoDispositivo[deviceIndex2] = RunKernel(deviceIndex2, kernelDispositivo[deviceIndex2], offset[deviceIndex2], length[deviceIndex2], isDeviceCPU(deviceIndex2)? 8 : 64);
-               // SynchronizeCommandQueue(deviceIndex2);
-            } else {
-                std::cerr << "Invalid device index: " << deviceIndex2 << std::endl;
-            }
-        }
-    }
+//                 kernelEventoDispositivo[deviceIndex2] = RunKernel(deviceIndex2, kernelDispositivo[deviceIndex2], offset[deviceIndex2], length[deviceIndex2], isDeviceCPU(deviceIndex2)? 8 : 64);
+//                // SynchronizeCommandQueue(deviceIndex2);
+//             } else {
+//                 std::cerr << "Invalid device index: " << deviceIndex2 << std::endl;
+//             }
+//         }
+//     }
  
-}
+// }
 
-else {
-    //Computação interna.
+// else {
+//     //Computação interna.
    
-			for(int count = 0; count < todosDispositivos; count++)
-			{
-				if(count >= meusDispositivosOffset && count < meusDispositivosOffset+meusDispositivosLength)
-				{	
+// 			for(int count = 0; count < todosDispositivos; count++)
+// 			{
+// 				if(count >= meusDispositivosOffset && count < meusDispositivosOffset+meusDispositivosLength)
+// 				{	
+// 					std::cout<<"Intern points:"<<std::endl;
+// 					RunKernel(count-meusDispositivosOffset, kernelDispositivo[count], offset[count]+(sdSize), length[count]-(sdSize), isDeviceCPU(count-meusDispositivosOffset) ? 8 :  64);
+// 				}
+// 			}
 
-					RunKernel(count-meusDispositivosOffset, kernelDispositivo[count], offset[count]+(sdSize), length[count]-(sdSize), isDeviceCPU(count-meusDispositivosOffset) ? 8 :  64);
-				}
-			}
-
-			// //Sincronizacao da computação interna.
-			// for(int count = 0; count < todosDispositivos; count++)
-			// {
-			// 	if(count >= meusDispositivosOffset && count < meusDispositivosOffset+meusDispositivosLength)
-			// 	{
-			// 		SynchronizeCommandQueue(count-meusDispositivosOffset);
-			// 	}
-			// }
+// 			// //Sincronizacao da computação interna.
+// 			// for(int count = 0; count < todosDispositivos; count++)
+// 			// {
+// 			// 	if(count >= meusDispositivosOffset && count < meusDispositivosOffset+meusDispositivosLength)
+// 			// 	{
+// 			// 		SynchronizeCommandQueue(count-meusDispositivosOffset);
+// 			// 	}
+// 			// }
 
                 
-                Comms();
+//                 Comms();
 
-            //Sincronizacao da comunicacao.
-			for(int count = 0; count < todosDispositivos; count++)
-			{
-				if(count >= meusDispositivosOffset && count < meusDispositivosOffset+meusDispositivosLength)
-				{
-					SynchronizeCommandQueue(count-meusDispositivosOffset);
-				}
-			}
+//             //Sincronizacao da comunicacao.
+// 			for(int count = 0; count < todosDispositivos; count++)
+// 			{
+// 				if(count >= meusDispositivosOffset && count < meusDispositivosOffset+meusDispositivosLength)
+// 				{
+// 					SynchronizeCommandQueue(count-meusDispositivosOffset);
+// 				}
+// 			}
 
 		
 			
-			// Computação das bordas.
-for (int count = 0; count < todosDispositivos; count++) {
-    if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength) {
-        int auxCount = 0;
-        // Ciclo para reorganizar os argumentos de acordo com a iteração
-           //std::cout<<"Iteration: "<<itCounter<<std::endl;
-           
-            // int id1 = GetDeviceMemoryObjectID(args[0], count);
-            // int id2 = GetDeviceMemoryObjectID(args[1], count);
-            // if(itCounter%2 == 0)
-            // {
-            // SetKernelAttribute(count - meusDispositivosOffset, kernelDispositivo[count], 0, id1);
-            // SetKernelAttribute(count - meusDispositivosOffset, kernelDispositivo[count], 1, id2);
-			// //SynchronizeCommandQueue(count-meusDispositivosOffset);
-            // }
-            // else
-            // {
-            // SetKernelAttribute(count - meusDispositivosOffset, kernelDispositivo[count], 0, id2);
-            // SetKernelAttribute(count - meusDispositivosOffset, kernelDispositivo[count], 1, id1);
-			// //SynchronizeCommandQueue(count-meusDispositivosOffset);   
-            // }
-           
-        // Executa o kernel para o dispositivo
-        RunKernel(count - meusDispositivosOffset, kernelDispositivo[count], offset[count], sdSize, isDeviceCPU(count - meusDispositivosOffset) ? 8 : 64);
-        RunKernel(count - meusDispositivosOffset, kernelDispositivo[count], offset[count] + length[count] - (sdSize), sdSize, isDeviceCPU(count - meusDispositivosOffset) ? 8 : 64);
+// 			// Computação das bordas.
+// for (int count = 0; count < todosDispositivos; count++) {
+//     if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength) {
+//         int auxCount = 0;
+//         std::cout<<"L border:"<<std::endl;
+//         RunKernel(count - meusDispositivosOffset, kernelDispositivo[count], offset[count], sdSize, isDeviceCPU(count - meusDispositivosOffset) ? 8 : 64);
+//         std::cout<<"R border:"<<std::endl;
+// 		RunKernel(count - meusDispositivosOffset, kernelDispositivo[count], offset[count] + length[count] - (sdSize), sdSize, isDeviceCPU(count - meusDispositivosOffset) ? 8 : 64);
+//     }
+// }
+
+
+
+
+//  }
+    
+//     for (int count = 0; count < todosDispositivos; count++) {
+//         if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength) {
+//             int deviceIndex2 = count - meusDispositivosOffset;
+//             if (deviceIndex2 >= 0 && deviceIndex2 < todosDispositivos) {
+//                 SynchronizeCommandQueue(deviceIndex2);
+//             } else {
+//                 std::cerr << "Invalid device index: " << deviceIndex2 << std::endl;
+//             }
+//         }
+//     }
+    
+//    itCounter++;
+//     }
+
+
+void OpenCLWrapper::ExecuteKernel() {
+    if (!sdSet) {
+        // comportamento original de warm-up, sem subdomínios
+        for (int count = 0; count < todosDispositivos; ++count) {
+            if (count < meusDispositivosOffset || count >= meusDispositivosOffset + meusDispositivosLength)
+                continue;
+            int dev = count - meusDispositivosOffset;
+            kernelEventoDispositivo[dev] = RunKernel(
+                dev,
+                kernelDispositivo[count],
+                offset[count],
+                length[count],
+                isDeviceCPU(dev) ? 8 : 64
+            );
+        }
+        return;
     }
+
+    // --- FASE 1: computação interna (exclui halos left e right) ---
+    std::cout << ">> Fase 1: interna (sem as bordas)\n";
+    for (int count = 0; count < todosDispositivos; ++count) {
+        if (count < meusDispositivosOffset || count >= meusDispositivosOffset + meusDispositivosLength)
+            continue;
+        int dev        = count - meusDispositivosOffset;
+        int start      = offset[count] + sdSize;
+        int interiorLen = (int)length[count] - 2 * (int)sdSize;
+        if (interiorLen > 0) {
+            std::printf("[Internal] dev=%d off=%d len=%d\n", dev, start, interiorLen);
+            RunKernel(dev, kernelDispositivo[count], start, interiorLen, isDeviceCPU(dev) ? 8 : 64);
+        }
+    }
+    // sincroniza todas as filas antes da comunicação
+    for (int dev = 0; dev < meusDispositivosLength; ++dev)
+        SynchronizeCommandQueue(dev);
+
+    // --- FASE 2: comunicação de halos entre dispositivos ---
+    std::cout << ">> Fase 2: Comms (troca de bordas)\n";
+    Comms();
+    // sincroniza após a troca
+    for (int dev = 0; dev < meusDispositivosLength; ++dev)
+        SynchronizeCommandQueue(dev);
+
+    // --- FASE 3: computação dos halos (left e right) ---
+    std::cout << ">> Fase 3: bordas\n";
+    for (int count = 0; count < todosDispositivos; ++count) {
+        if (count < meusDispositivosOffset || count >= meusDispositivosOffset + meusDispositivosLength)
+            continue;
+        int dev = count - meusDispositivosOffset;
+        // halo esquerdo
+        {
+            int start = offset[count];
+            std::printf("[Border L] dev=%d off=%d len=%zu\n", dev, start, sdSize);
+            RunKernel(dev, kernelDispositivo[count], start, sdSize, isDeviceCPU(dev) ? 8 : 64);
+        }
+        // halo direito
+        {
+            int start = offset[count] + (int)length[count] - (int)sdSize;
+            std::printf("[Border R] dev=%d off=%d len=%zu\n", dev, start, sdSize);
+            RunKernel(dev, kernelDispositivo[count], start, sdSize, isDeviceCPU(dev) ? 8 : 64);
+        }
+    }
+    // sincroniza a fase de halos
+    for (int dev = 0; dev < meusDispositivosLength; ++dev)
+        SynchronizeCommandQueue(dev);
+
+    itCounter++;
 }
 
 
 
 
- }
-    
-    // for (int count = 0; count < todosDispositivos; count++) {
-    //     if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength) {
-    //         int deviceIndex2 = count - meusDispositivosOffset;
-    //         if (deviceIndex2 >= 0 && deviceIndex2 < todosDispositivos) {
-    //             SynchronizeCommandQueue(deviceIndex2);
-    //         } else {
-    //             std::cerr << "Invalid device index: " << deviceIndex2 << std::endl;
-    //         }
-    //     }
-    // }
-    
-   itCounter++;
-    }
-
-int OpenCLWrapper::RunKernel(int devicePosition, int kernelID, int parallelDataOffset, size_t parallelData, int workGroupSize) {
+int OpenCLWrapper::RunKernel(int devicePosition, int kernelID, int parallelDataOffset, int parallelData, int workGroupSize) {
     
    
    int kernelPosition = GetKernelPosition(devicePosition, kernelID);
@@ -454,8 +509,8 @@ int OpenCLWrapper::RunKernel(int devicePosition, int kernelID, int parallelDataO
 	{
 		//Make sure parallelData is a power of 2.
 		size_t globalItemsOffset = Maximum(parallelDataOffset, 0);
-		size_t globalItems = parallelData;
-		size_t mask = 0;
+		size_t globalItems = size_t(parallelData);
+		int mask = 0;
 		globalItems = Maximum(workGroupSize, parallelData + workGroupSize - (parallelData%workGroupSize));
 
 		cl_int state;
@@ -484,6 +539,54 @@ int OpenCLWrapper::RunKernel(int devicePosition, int kernelID, int parallelDataO
 
 }
 
+
+// int OpenCLWrapper::RunKernel(int devicePosition,
+//                              int kernelID,
+//                              int parallelDataOffset,
+//                              int parallelData,
+//                              int /*workGroupSize—agora ignorado*/) 
+// {
+//     // Debug: provar que entrou no seu RunKernel
+//     printf("RunKernel → devPos=%d, kernelID=%d, offset=%d, sizeRequested=%zu\n",
+//            devicePosition, kernelID, parallelDataOffset, parallelData);
+
+//     int kernelPosition = GetKernelPosition(devicePosition, kernelID);
+//     if (kernelPosition < 0 ||
+//         devices[devicePosition].numberOfEvents >= maxEvents) {
+//         printf("  Error: kernel não encontrado ou eventos excedidos.\n");
+//         return -1;
+//     }
+
+//     // **Não** mexa no parallelData — ele é o número exato de work-items que queremos.
+//     int globalOffset = (int)std::max(parallelDataOffset, 0);
+//     int globalSize   = parallelData;      // <-- aqui não há padding!
+
+//     // Enfileira COM local_work_size = nullptr, para o driver escolher
+//     cl_int err = clEnqueueNDRangeKernel(
+//         devices[devicePosition].kernelCommandQueue,
+//         devices[devicePosition].kernels[kernelPosition],
+//         1,
+//         &globalOffset,
+//         &globalSize,
+//         nullptr,    // <— força o driver a escolher um local_size que divida globalSize
+//         0, nullptr,
+//         &devices[devicePosition].events[devices[devicePosition].numberOfEvents]
+//     );
+//     if (err != CL_SUCCESS) {
+//         printf("  Error queueing kernel! CL error code: %d\n", err);
+//         return -1;
+//     }
+
+//     // Garanta que execute antes de seguir
+//     clFlush(devices[devicePosition].kernelCommandQueue);
+//     clFinish(devices[devicePosition].kernelCommandQueue);
+
+//     return devices[devicePosition].numberOfEvents++;
+// }
+
+
+
+
 void OpenCLWrapper::SynchronizeCommandQueue(int devicePosition)
 {
     
@@ -511,7 +614,7 @@ void OpenCLWrapper::GatherResults(int dataIndex, void *resultData) {
    
 }
 
-void OpenCLWrapper::setLoadBalancer(size_t _elementSize, int N_Elements, int units_per_elements, int _divisionSize) {
+void OpenCLWrapper::setLoadBalancer(int _elementSize, int N_Elements, int units_per_elements, int _divisionSize) {
     
     
     ticks = new long int[todosDispositivos];  
@@ -521,8 +624,8 @@ void OpenCLWrapper::setLoadBalancer(size_t _elementSize, int N_Elements, int uni
     swapBufferDispositivo = new int*[todosDispositivos]; 
     memObjects = new int[todosDispositivos];  
     tempos = new float[todosDispositivos];    
-    offset = new unsigned long int[todosDispositivos];   
-    length = new unsigned long int[todosDispositivos];   
+    offset = new int[todosDispositivos];   
+    length = new int[todosDispositivos];   
     offsetDispositivo = new int[todosDispositivos];   
     lengthDispositivo = new int[todosDispositivos];    
     kernelEventoDispositivo = new int[todosDispositivos];   
@@ -565,13 +668,182 @@ void OpenCLWrapper::setLoadBalancer(size_t _elementSize, int N_Elements, int uni
 
 
 
+// void OpenCLWrapper::Probing()
+// {
+//    // std::cout << "Iniciando balanceamento..." << std::endl;
+
+//     double tempoInicioProbing = MPI_Wtime();
+//     double localLatencia = 0.0, localBanda = 0.0;
+// 	double localwriteByte1 = 0.0;
+//     double localwriteByte2 = 0.0;
+//     if (nElements <= 0 || unitsPerElement <= 0 || elementSize <= 0) {
+//         std::cerr << "Erro: Valores inválidos para nElements, unitsPerElement ou elementSize." << std::endl;
+//         return;
+//     }
+
+//     char *auxData = new char[nElements * unitsPerElement * elementSize];
+    
+//     if (!auxData) {
+//         std::cerr << "Erro: Falha ao alocar memória para auxData." << std::endl;
+//         return;
+//     }
+
+//     //GatherResults(balancingTargetID, auxData);
+
+//     int somaLengthAntes = 0;
+//     for (int i = 0; i < todosDispositivos; i++) {
+//         somaLengthAntes += length[i];
+//     }
+//     std::cout << "Soma do length antes do probing: " << somaLengthAntes << std::endl;
+
+//     PrecisaoBalanceamento();
+   
+//     for (int count = 0; count < todosDispositivos; count++)
+//     {
+//         if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength)
+//         {
+//             int overlapNovoOffset = static_cast<int>(round(count == 0 ? 0.0f : cargasNovas[count - 1] * static_cast<float>(nElements)));
+
+//             int overlapNovoLength;
+//             if (count == todosDispositivos - 1) {
+//                 // Último dispositivo pega todos os elementos restantes
+//                 overlapNovoLength = nElements - overlapNovoOffset;
+//             } else {
+//                 overlapNovoLength = static_cast<int>(round(cargasNovas[count] * static_cast<float>(nElements)) - round(count == 0 ? 0.0f : cargasNovas[count - 1] * static_cast<float>(nElements)));
+//             }
+
+//             // Verificações e logs antes de usar os valores calculados
+//             if (overlapNovoOffset < 0 || overlapNovoOffset >= nElements || 
+//                 overlapNovoLength < 0 || overlapNovoOffset + overlapNovoLength > nElements) {
+//                 std::cerr << "Erro: valores inválidos para overlapNovoOffset ou overlapNovoLength." << std::endl;
+//                 std::cerr << "  overlapNovoOffset: " << overlapNovoOffset 
+//                           << ", overlapNovoLength: " << overlapNovoLength 
+//                           << ", nElements: " << nElements << std::endl;
+//                 delete[] auxData;
+//                 return;
+//             }
+
+//             for (int count2 = 0; count2 < todosDispositivos; count2++)
+//             {
+//                 if (count > count2)
+//                 {
+//                     if (RecuperarPosicaoHistograma(dispositivosWorld, world_size, count) != RecuperarPosicaoHistograma(dispositivosWorld, world_size, count2))
+//                     {
+//                         int overlap[2];
+//                         int alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, count2);
+//                         char *malha = auxData;
+//                         int dataDevice = GetDeviceMemoryObjectID(balancingTargetID, count);
+
+//                         MPI_Recv(overlap, 2, MPI_INT, alvo, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+//                         if (overlap[1] > 0 && overlap[0] >= 0 && overlap[0] + overlap[1] <= nElements)
+//                         {
+//                             ReadFromMemoryObject(count - meusDispositivosOffset, dataDevice, malha + (overlap[0] * unitsPerElement), overlap[0] * unitsPerElement * elementSize, overlap[1] * unitsPerElement * elementSize);
+//                             SynchronizeCommandQueue(count - meusDispositivosOffset);
+
+//                             int sizeCarga = overlap[1] * unitsPerElement;
+
+//                             double tempoInicioBanda = MPI_Wtime();
+//                             MPI_Ssend(malha + (overlap[0] * unitsPerElement), sizeCarga, MPI_CHAR, alvo, 0, MPI_COMM_WORLD);
+//                             double aux = (MPI_Wtime() - tempoInicioBanda) / sizeCarga;
+//                             localBanda = aux > localBanda ? aux : localBanda;
+//                         }
+//                     }
+//                 }
+//                 else if (count < count2)
+//                 {
+//                     int overlapAntigoOffset = static_cast<int>(round(count == 0 ? 0.0f : cargasNovas[count - 1] * static_cast<float>(nElements)));
+//                     int overlapAntigoLength = static_cast<int>(round(cargasNovas[count] * static_cast<float>(nElements)) - round(count == 0 ? 0.0f : cargasNovas[count - 1] * static_cast<float>(nElements)));
+
+//                     if (overlapAntigoOffset < 0 || overlapAntigoOffset >= nElements || 
+//                         overlapAntigoLength < 0 || overlapAntigoOffset + overlapAntigoLength > nElements) {
+//                         std::cerr << "Erro: valores inválidos para overlapAntigoOffset ou overlapAntigoLength." << std::endl;
+//                         delete[] auxData;
+//                         return;
+//                     }
+
+//                     int intersecaoOffset;
+//                     int intersecaoLength;
+
+//                     if (ComputarIntersecao(overlapAntigoOffset, overlapAntigoLength, overlapNovoOffset, overlapNovoLength, &intersecaoOffset, &intersecaoLength))
+//                     {
+//                         if (count2 >= meusDispositivosOffset && count2 < meusDispositivosOffset + meusDispositivosLength)
+//                         {
+//                             char *malha = auxData;
+//                             int dataDevice[2] = {GetDeviceMemoryObjectID(balancingTargetID, count), GetDeviceMemoryObjectID(balancingTargetID, count2)};
+//                           	double tempoIniciowriteByte = MPI_Wtime();
+// 						    ReadFromMemoryObject(count2 - meusDispositivosOffset, dataDevice[1], malha + (intersecaoOffset * unitsPerElement), intersecaoOffset * unitsPerElement * elementSize, intersecaoLength * unitsPerElement * elementSize);
+//                             SynchronizeCommandQueue(count2 - meusDispositivosOffset);
+
+//                             WriteToMemoryObject(count - meusDispositivosOffset, dataDevice[0], malha + (intersecaoOffset * unitsPerElement), intersecaoOffset * unitsPerElement * elementSize, intersecaoLength * unitsPerElement * elementSize);
+//                             SynchronizeCommandQueue(count - meusDispositivosOffset);
+// 							double tempoFimwriteByte = MPI_Wtime() - tempoIniciowriteByte;
+// 							localwriteByte1 = tempoFimwriteByte > localwriteByte1 ? tempoFimwriteByte : localwriteByte1;
+//                         }
+//                         else
+//                         {
+//                             if (RecuperarPosicaoHistograma(dispositivosWorld, world_size, count) != RecuperarPosicaoHistograma(dispositivosWorld, world_size, count2))
+//                             {
+//                                 int overlap[2] = {intersecaoOffset, intersecaoLength};
+//                                 int alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, count2);
+//                                 char *malha = auxData;
+//                                 int dataDevice = GetDeviceMemoryObjectID(balancingTargetID, count);
+
+//                                 SynchronizeCommandQueue(count - meusDispositivosOffset);
+//                                 double tempoInicioLatencia = MPI_Wtime();
+//                                 MPI_Ssend(overlap, 2, MPI_INT, alvo, 0, MPI_COMM_WORLD);
+//                                 double aux = (MPI_Wtime() - tempoInicioLatencia) / 2;
+//                                 localLatencia = aux > localLatencia ? aux : localLatencia;
+
+//                                 MPI_Recv(malha + (overlap[0] * unitsPerElement), overlap[1] * unitsPerElement, MPI_CHAR, alvo, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+// 								double tempoIniciowriteByte2 = MPI_Wtime();
+//                                 WriteToMemoryObject(count - meusDispositivosOffset, dataDevice, malha + (overlap[0] * unitsPerElement), overlap[0] * unitsPerElement * elementSize, overlap[1] * unitsPerElement * elementSize);
+//                                 SynchronizeCommandQueue(count - meusDispositivosOffset);
+// 								double tempoFimwriteByte = MPI_Wtime() - tempoIniciowriteByte2;
+// 								localwriteByte2 = tempoFimwriteByte > localwriteByte2 ? tempoFimwriteByte : localwriteByte2;
+//                             }
+//                         }
+//                     }
+//                 }
+//             }
+
+//             offset[count] = overlapNovoOffset;
+//             length[count] = overlapNovoLength;
+//             SynchronizeCommandQueue(count - meusDispositivosOffset);
+//         }
+//     }
+
+//     int somaLengthDepois = 0;
+//     for (int i = 0; i < todosDispositivos; i++) {
+//         somaLengthDepois += length[i];
+//     }
+//     std::cout << "Soma do length depois do probing: " << somaLengthDepois << std::endl;
+
+//     std::cout << "Após o probing: " << std::endl;
+//     for (int i = 0; i < todosDispositivos; i++)
+//         std::cout << " Offset[" << i << "] = " << offset[i] << " length[" << i << "] = " << length[i] << " ";
+//     std::cout << "\n";
+
+//     memcpy(cargasAntigas, cargasNovas, sizeof(float) * todosDispositivos);
+// 	double writeByte1, writeByte2;
+//     MPI_Allreduce(&localLatencia, &latencia, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+//     MPI_Allreduce(&localBanda, &banda, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+// 	MPI_Allreduce(&localwriteByte1, &writeByte1, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+// 	MPI_Allreduce(&localwriteByte2, &writeByte2, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+//     writeByte = writeByte1 + writeByte2;
+// 	MPI_Barrier(MPI_COMM_WORLD);
+//     double tempoFimProbing = MPI_Wtime();
+//     tempoBalanceamento += tempoFimProbing - tempoInicioProbing;
+//     fatorErro = tempoBalanceamento;
+//     delete[] auxData;
+// }
+
+
 void OpenCLWrapper::Probing()
 {
-   // std::cout << "Iniciando balanceamento..." << std::endl;
-
     double tempoInicioProbing = MPI_Wtime();
     double localLatencia = 0.0, localBanda = 0.0;
-	double localwriteByte1 = 0.0;
+    double localwriteByte1 = 0.0;
     double localwriteByte2 = 0.0;
     if (nElements <= 0 || unitsPerElement <= 0 || elementSize <= 0) {
         std::cerr << "Erro: Valores inválidos para nElements, unitsPerElement ou elementSize." << std::endl;
@@ -579,125 +851,86 @@ void OpenCLWrapper::Probing()
     }
 
     char *auxData = new char[nElements * unitsPerElement * elementSize];
-    
     if (!auxData) {
         std::cerr << "Erro: Falha ao alocar memória para auxData." << std::endl;
         return;
     }
 
-    //GatherResults(balancingTargetID, auxData);
-
     int somaLengthAntes = 0;
-    for (int i = 0; i < todosDispositivos; i++) {
-        somaLengthAntes += length[i];
-    }
+    for (int i = 0; i < todosDispositivos; i++) somaLengthAntes += length[i];
     std::cout << "Soma do length antes do probing: " << somaLengthAntes << std::endl;
 
     PrecisaoBalanceamento();
-   
-    for (int count = 0; count < todosDispositivos; count++)
-    {
-        if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength)
-        {
-            int overlapNovoOffset = static_cast<int>(round(count == 0 ? 0.0f : cargasNovas[count - 1] * static_cast<float>(nElements)));
 
-            int overlapNovoLength;
-            if (count == todosDispositivos - 1) {
-                // Último dispositivo pega todos os elementos restantes
-                overlapNovoLength = nElements - overlapNovoOffset;
-            } else {
-                overlapNovoLength = static_cast<int>(round(cargasNovas[count] * static_cast<float>(nElements)) - round(count == 0 ? 0.0f : cargasNovas[count - 1] * static_cast<float>(nElements)));
-            }
+    for (int count = 0; count < todosDispositivos; count++) {
+        if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength) {
+            int overlapNovoOffset = static_cast<int>(round(count == 0 ? 0.0f : cargasNovas[count - 1] * nElements));
+            int overlapNovoLength = (count == todosDispositivos - 1)
+                ? nElements - overlapNovoOffset
+                : static_cast<int>(round(cargasNovas[count] * nElements) - round(count == 0 ? 0.0f : cargasNovas[count - 1] * nElements));
 
-            // Verificações e logs antes de usar os valores calculados
             if (overlapNovoOffset < 0 || overlapNovoOffset >= nElements || 
                 overlapNovoLength < 0 || overlapNovoOffset + overlapNovoLength > nElements) {
                 std::cerr << "Erro: valores inválidos para overlapNovoOffset ou overlapNovoLength." << std::endl;
-                std::cerr << "  overlapNovoOffset: " << overlapNovoOffset 
-                          << ", overlapNovoLength: " << overlapNovoLength 
-                          << ", nElements: " << nElements << std::endl;
                 delete[] auxData;
                 return;
             }
 
-            for (int count2 = 0; count2 < todosDispositivos; count2++)
-            {
-                if (count > count2)
-                {
-                    if (RecuperarPosicaoHistograma(dispositivosWorld, world_size, count) != RecuperarPosicaoHistograma(dispositivosWorld, world_size, count2))
-                    {
+            for (int count2 = 0; count2 < todosDispositivos; count2++) {
+                if (count > count2) {
+                    if (RecuperarPosicaoHistograma(dispositivosWorld, world_size, count) != RecuperarPosicaoHistograma(dispositivosWorld, world_size, count2)) {
                         int overlap[2];
                         int alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, count2);
                         char *malha = auxData;
                         int dataDevice = GetDeviceMemoryObjectID(balancingTargetID, count);
 
                         MPI_Recv(overlap, 2, MPI_INT, alvo, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-
-                        if (overlap[1] > 0 && overlap[0] >= 0 && overlap[0] + overlap[1] <= nElements)
-                        {
+                        if (overlap[1] > 0 && overlap[0] >= 0 && overlap[0] + overlap[1] <= nElements) {
                             ReadFromMemoryObject(count - meusDispositivosOffset, dataDevice, malha + (overlap[0] * unitsPerElement), overlap[0] * unitsPerElement * elementSize, overlap[1] * unitsPerElement * elementSize);
                             SynchronizeCommandQueue(count - meusDispositivosOffset);
 
-                            int sizeCarga = overlap[1] * unitsPerElement;
-
                             double tempoInicioBanda = MPI_Wtime();
-                            MPI_Ssend(malha + (overlap[0] * unitsPerElement), sizeCarga, MPI_CHAR, alvo, 0, MPI_COMM_WORLD);
-                            double aux = (MPI_Wtime() - tempoInicioBanda) / sizeCarga;
+                            MPI_Ssend(malha + (overlap[0] * unitsPerElement), overlap[1] * unitsPerElement, MPI_CHAR, alvo, 0, MPI_COMM_WORLD);
+                            double aux = (MPI_Wtime() - tempoInicioBanda) / (overlap[1] * unitsPerElement);
                             localBanda = aux > localBanda ? aux : localBanda;
                         }
                     }
-                }
-                else if (count < count2)
-                {
-                    int overlapAntigoOffset = static_cast<int>(round(count == 0 ? 0.0f : cargasNovas[count - 1] * static_cast<float>(nElements)));
-                    int overlapAntigoLength = static_cast<int>(round(cargasNovas[count] * static_cast<float>(nElements)) - round(count == 0 ? 0.0f : cargasNovas[count - 1] * static_cast<float>(nElements)));
-
-                    if (overlapAntigoOffset < 0 || overlapAntigoOffset >= nElements || 
-                        overlapAntigoLength < 0 || overlapAntigoOffset + overlapAntigoLength > nElements) {
-                        std::cerr << "Erro: valores inválidos para overlapAntigoOffset ou overlapAntigoLength." << std::endl;
-                        delete[] auxData;
-                        return;
-                    }
+                } else if (count < count2) {
+                    int overlapAntigoOffset = static_cast<int>(round(count == 0 ? 0.0f : cargasNovas[count - 1] * nElements));
+                    int overlapAntigoLength = static_cast<int>(round(cargasNovas[count] * nElements) - round(count == 0 ? 0.0f : cargasNovas[count - 1] * nElements));
 
                     int intersecaoOffset;
                     int intersecaoLength;
-
-                    if (ComputarIntersecao(overlapAntigoOffset, overlapAntigoLength, overlapNovoOffset, overlapNovoLength, &intersecaoOffset, &intersecaoLength))
-                    {
-                        if (count2 >= meusDispositivosOffset && count2 < meusDispositivosOffset + meusDispositivosLength)
-                        {
+                    if (ComputarIntersecao(overlapAntigoOffset, overlapAntigoLength, overlapNovoOffset, overlapNovoLength, &intersecaoOffset, &intersecaoLength)) {
+                        if (count2 >= meusDispositivosOffset && count2 < meusDispositivosOffset + meusDispositivosLength) {
                             char *malha = auxData;
                             int dataDevice[2] = {GetDeviceMemoryObjectID(balancingTargetID, count), GetDeviceMemoryObjectID(balancingTargetID, count2)};
-                          	double tempoIniciowriteByte = MPI_Wtime();
-						    ReadFromMemoryObject(count2 - meusDispositivosOffset, dataDevice[1], malha + (intersecaoOffset * unitsPerElement), intersecaoOffset * unitsPerElement * elementSize, intersecaoLength * unitsPerElement * elementSize);
+                            double tempoIniciowriteByte = MPI_Wtime();
+                            ReadFromMemoryObject(count2 - meusDispositivosOffset, dataDevice[1], malha + (intersecaoOffset * unitsPerElement), intersecaoOffset * unitsPerElement * elementSize, intersecaoLength * unitsPerElement * elementSize);
                             SynchronizeCommandQueue(count2 - meusDispositivosOffset);
 
                             WriteToMemoryObject(count - meusDispositivosOffset, dataDevice[0], malha + (intersecaoOffset * unitsPerElement), intersecaoOffset * unitsPerElement * elementSize, intersecaoLength * unitsPerElement * elementSize);
                             SynchronizeCommandQueue(count - meusDispositivosOffset);
-							double tempoFimwriteByte = MPI_Wtime() - tempoIniciowriteByte;
-							localwriteByte1 = tempoFimwriteByte > localwriteByte1 ? tempoFimwriteByte : localwriteByte1;
-                        }
-                        else
-                        {
-                            if (RecuperarPosicaoHistograma(dispositivosWorld, world_size, count) != RecuperarPosicaoHistograma(dispositivosWorld, world_size, count2))
-                            {
-                                int overlap[2] = {intersecaoOffset, intersecaoLength};
+                            double tempoFimwriteByte = MPI_Wtime() - tempoIniciowriteByte;
+                            localwriteByte1 = tempoFimwriteByte > localwriteByte1 ? tempoFimwriteByte : localwriteByte1;
+                        } else {
+                            if (RecuperarPosicaoHistograma(dispositivosWorld, world_size, count) != RecuperarPosicaoHistograma(dispositivosWorld, world_size, count2)) {
+                                int overlapMsg[2] = {intersecaoOffset, intersecaoLength};
                                 int alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, count2);
                                 char *malha = auxData;
                                 int dataDevice = GetDeviceMemoryObjectID(balancingTargetID, count);
 
-                                SynchronizeCommandQueue(count - meusDispositivosOffset);
                                 double tempoInicioLatencia = MPI_Wtime();
-                                MPI_Ssend(overlap, 2, MPI_INT, alvo, 0, MPI_COMM_WORLD);
+                                MPI_Ssend(overlapMsg, 2, MPI_INT, alvo, 0, MPI_COMM_WORLD);
                                 double aux = (MPI_Wtime() - tempoInicioLatencia) / 2;
                                 localLatencia = aux > localLatencia ? aux : localLatencia;
 
-                                MPI_Recv(malha + (overlap[0] * unitsPerElement), overlap[1] * unitsPerElement, MPI_CHAR, alvo, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-								double tempoIniciowriteByte2 = MPI_Wtime();
-                                WriteToMemoryObject(count - meusDispositivosOffset, dataDevice, malha + (overlap[0] * unitsPerElement), overlap[0] * unitsPerElement * elementSize, overlap[1] * unitsPerElement * elementSize);
+                                MPI_Recv(malha + (overlapMsg[0] * unitsPerElement), overlapMsg[1] * unitsPerElement, MPI_CHAR, alvo, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                                double tempoIniciowriteByte2 = MPI_Wtime();
+                                WriteToMemoryObject(count - meusDispositivosOffset, dataDevice, malha + (overlapMsg[0] * unitsPerElement), overlapMsg[0] * unitsPerElement * elementSize, overlapMsg[1] * unitsPerElement * elementSize);
                                 SynchronizeCommandQueue(count - meusDispositivosOffset);
-								double tempoFimwriteByte = MPI_Wtime() - tempoIniciowriteByte2;
-								localwriteByte2 = tempoFimwriteByte > localwriteByte2 ? tempoFimwriteByte : localwriteByte2;
+                                double tempoFimwriteByte = MPI_Wtime() - tempoIniciowriteByte2;
+                                localwriteByte2 = tempoFimwriteByte > localwriteByte2 ? tempoFimwriteByte : localwriteByte2;
                             }
                         }
                     }
@@ -711,27 +944,36 @@ void OpenCLWrapper::Probing()
     }
 
     int somaLengthDepois = 0;
-    for (int i = 0; i < todosDispositivos; i++) {
-        somaLengthDepois += length[i];
-    }
+    for (int i = 0; i < todosDispositivos; i++) somaLengthDepois += length[i];
     std::cout << "Soma do length depois do probing: " << somaLengthDepois << std::endl;
-
-    std::cout << "Após o probing: " << std::endl;
-    for (int i = 0; i < todosDispositivos; i++)
-        std::cout << " Offset[" << i << "] = " << offset[i] << " length[" << i << "] = " << length[i] << " ";
-    std::cout << "\n";
+    std::cout << "Após o probing per-device offsets, lengths and estimates:" << std::endl;
+    for (int i = 0; i < todosDispositivos; i++) {
+        double cargaPercent = (double)length[i] / somaLengthDepois * 100.0;
+        std::cout << " Dispositivo[" << i << "] Offset=" << offset[i]
+                  << " Length=" << length[i]
+                  << " (" << cargaPercent << "% Est.)"
+                  << " CargaAntiga Est=" << cargasAntigas[i]
+                  << " CargaNova Est=" << cargasNovas[i]
+                  << std::endl;
+    }
 
     memcpy(cargasAntigas, cargasNovas, sizeof(float) * todosDispositivos);
-	double writeByte1, writeByte2;
+    double writeByte1, writeByte2;
     MPI_Allreduce(&localLatencia, &latencia, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
     MPI_Allreduce(&localBanda, &banda, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
-	MPI_Allreduce(&localwriteByte1, &writeByte1, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
-	MPI_Allreduce(&localwriteByte2, &writeByte2, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+    MPI_Allreduce(&localwriteByte1, &writeByte1, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+    MPI_Allreduce(&localwriteByte2, &writeByte2, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
     writeByte = writeByte1 + writeByte2;
-	MPI_Barrier(MPI_COMM_WORLD);
+    MPI_Barrier(MPI_COMM_WORLD);
     double tempoFimProbing = MPI_Wtime();
     tempoBalanceamento += tempoFimProbing - tempoInicioProbing;
     fatorErro = tempoBalanceamento;
+    std::cout << "Probing timings: Latencia=" << latencia
+              << " Banda=" << banda
+              << " WriteByte1(max)=" << writeByte1
+              << " WriteByte2(max)=" << writeByte2
+              << " TotalWriteByte=" << writeByte
+              << std::endl;
     delete[] auxData;
 }
 
@@ -793,7 +1035,14 @@ void OpenCLWrapper::PrecisaoBalanceamento() {
 	MPI_Allreduce(tempos, tempos_root, todosDispositivos, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
 	memcpy(tempos, tempos_root, sizeof(float) * todosDispositivos);
   
-
+    std::cout << "PrecisaoBalanceamento results per device:" << std::endl;
+    for (int i = 0; i < todosDispositivos; i++) {
+        std::cout << " Dispositivo[" << i << "] Ticks=" << ticks[i]
+                  << " Tempo=" << tempos[i]
+                  << " CargaAntiga Est=" << cargasAntigas[i]
+                  << " CargaNova Est=" << cargasNovas[i]
+                  << std::endl;
+    }
 
 }
 
@@ -1106,7 +1355,7 @@ bool OpenCLWrapper:: RemoveMemoryObject(int devicePosition, int memoryObjectID)
 	return false;
 }
 
-int OpenCLWrapper::WriteToMemoryObject(int devicePosition, int memoryObjectID, const char *data, int offset, size_t size) {
+int OpenCLWrapper::WriteToMemoryObject(int devicePosition, int memoryObjectID, const char *data, int offset, int size) {
     cl_int state;
 	int memoryObjectPosition = GetMemoryObjectPosition(devicePosition, memoryObjectID);
 	if (memoryObjectPosition != -1 && devices[devicePosition].numberOfEvents < maxEvents)
@@ -1128,7 +1377,7 @@ int OpenCLWrapper::WriteToMemoryObject(int devicePosition, int memoryObjectID, c
 	return -1;
 }
 
-int OpenCLWrapper::ReadFromMemoryObject(int devicePosition, int memoryObjectID, char *data, int offset, size_t size)
+int OpenCLWrapper::ReadFromMemoryObject(int devicePosition, int memoryObjectID, char *data, int offset, int size)
 {
 	
 
@@ -1257,7 +1506,7 @@ void OpenCLWrapper::FinishParallelProcessor()
 	devices = NULL;
 }
 
-int OpenCLWrapper::AllocateMemoryObject(size_t _size, cl_mem_flags _flags, void* _host_ptr) {
+int OpenCLWrapper::AllocateMemoryObject(int _size, cl_mem_flags _flags, void* _host_ptr) {
     int globalMemObjID = globalMemoryObjectIDCounter;
     globalMemoryObjectIDCounter++;
     memoryObjectIDs->emplace(globalMemObjID, std::vector<int>(todosDispositivos, -1)); // Inicializa com -1 para indicar que ainda não foi setado
@@ -1319,7 +1568,7 @@ for(int count = 0; count < todosDispositivos; count++)
 
 
 
-int OpenCLWrapper::WriteObject(int GlobalObjectID, const char *data, int offset, size_t size) {
+int OpenCLWrapper::WriteObject(int GlobalObjectID, const char *data, int offset, int size) {
 
 int returnF;
 
@@ -1357,7 +1606,7 @@ balancingTargetID = targetID;
 }
 
 
-void OpenCLWrapper::setSubdomainBoundary(size_t _sdSize, int _nArgs, int* _args) {
+void OpenCLWrapper::setSubdomainBoundary(int _sdSize, int _nArgs, int* _args) {
     sdSize = _sdSize; // Tamanho da borda
     nArgs = _nArgs;
     args = new int[nArgs]; // Inicializando corretamente o array args
@@ -1370,8 +1619,192 @@ void OpenCLWrapper::setSubdomainBoundary(size_t _sdSize, int _nArgs, int* _args)
 
 
 
+// void OpenCLWrapper::Comms(){
+// int tamanhoBorda = sdSize;
+// char *malha = new char[nElements * elementSize * unitsPerElement];
+// //GatherResults(balancingTargetID, malha);
+// int *malhaDevice = new int[2];
+// int *borda = new int[2];
+// int alvo;
+// int *dataEventoDispositivo = new int[todosDispositivos];
+// MPI_Request sendRequest, receiveRequest;
+// //Transferencia de bordas, feita em quatro passos.
+// 			for(int passo = 0; passo < 4; passo++)
+// 			{
+// 				for(int count = 0; count < todosDispositivos; count++)
+// 				{
+// 					if(count >= meusDispositivosOffset && count < meusDispositivosOffset+meusDispositivosLength)
+// 					{
+						
+						
+// 						//Entre processos diferentes, no quarto passo.
+// 						if(passo == 3)
+// 						{
+// 							if(count == meusDispositivosOffset && count > 0)
+// 							{
+								
+// 								malhaDevice[0] = GetDeviceMemoryObjectID(balancingTargetID, count);								
+// 								int malhaRead = malhaDevice[0];
+// 								if(enableSwapBuffer)
+// 								malhaRead = GetDeviceMemoryObjectID(swapBufferID, count);
+// 								borda[0] = int(offset[count]-(tamanhoBorda));
+// 								borda[0] = (borda[0] < 0) ? 0 : borda[0];
+// 								borda[1] = int(offset[count]);
+// 								alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, count-1);
+
+// 								if(alvo%2 == 0)
+// 								{
+// 									MPI_Irecv(malha+(borda[0]*unitsPerElement), tamanhoBorda*unitsPerElement, MPI_CHAR, alvo, 0, MPI_COMM_WORLD, &receiveRequest);
+
+// 									dataEventoDispositivo[count] = ReadFromMemoryObject(count-meusDispositivosOffset, malhaRead, (malha+(borda[1]*unitsPerElement)), borda[1]*unitsPerElement*elementSize, tamanhoBorda*unitsPerElement*elementSize);
+// 									SynchronizeCommandQueue(count-meusDispositivosOffset);
+// 									MPI_Isend(malha+(borda[1]*unitsPerElement), tamanhoBorda*unitsPerElement, MPI_CHAR, alvo, 0, MPI_COMM_WORLD, &sendRequest);
+// 									MPI_Wait(&sendRequest, MPI_STATUS_IGNORE);
+// 									MPI_Wait(&receiveRequest, MPI_STATUS_IGNORE);
+									
+// 									WriteToMemoryObject(count-meusDispositivosOffset, malhaDevice[0], (malha+(borda[0]*unitsPerElement)), borda[0]*unitsPerElement*elementSize, tamanhoBorda*unitsPerElement*elementSize);
+// 									SynchronizeCommandQueue(count-meusDispositivosOffset);
+
+// 								}
+// 							}
+// 							if(count == meusDispositivosOffset+meusDispositivosLength-1 && count < todosDispositivos-1)
+// 							{	
+// 								malhaDevice[0]= GetDeviceMemoryObjectID(balancingTargetID, count);
+// 								int malhaRead = malhaDevice[0];
+// 								if(enableSwapBuffer)
+// 								malhaRead = GetDeviceMemoryObjectID(swapBufferID, count);		
+// 								borda[0] = int((offset[count]+length[count])-(tamanhoBorda));
+// 								borda[0] = (borda[0] < 0) ? 0 : borda[0];
+// 								borda[1] = int((offset[count]+length[count]));
+// 								alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, count+1);
+
+// 								if(alvo%2 == 1)
+// 								{
+// 									dataEventoDispositivo[count] = ReadFromMemoryObject(count-meusDispositivosOffset, malhaRead, (malha+(borda[1]*unitsPerElement)), borda[1]*unitsPerElement*elementSize, tamanhoBorda*unitsPerElement*elementSize);
+// 									SynchronizeCommandQueue(count-meusDispositivosOffset);
+// 									MPI_Isend(malha+(borda[1]*unitsPerElement), tamanhoBorda*unitsPerElement, MPI_CHAR, alvo, 0, MPI_COMM_WORLD, &sendRequest);
+// 									MPI_Irecv(malha+(borda[0]*unitsPerElement), tamanhoBorda*unitsPerElement, MPI_CHAR, alvo, 0, MPI_COMM_WORLD, &receiveRequest);
+// 									MPI_Wait(&sendRequest, MPI_STATUS_IGNORE);
+// 									MPI_Wait(&receiveRequest, MPI_STATUS_IGNORE);
+// 									WriteToMemoryObject(count-meusDispositivosOffset, malhaDevice[0], (malha+(borda[0]*unitsPerElement)), borda[0]*unitsPerElement*elementSize, tamanhoBorda*unitsPerElement*elementSize);
+// 									SynchronizeCommandQueue(count-meusDispositivosOffset);
+
+// 								}
+// 							}
+// 						}
+
+// 						//Entre processos diferentes, no terceiro passo.
+// 						if(passo == 2)
+// 						{
+// 							if(count == meusDispositivosOffset && count > 0)
+// 							{
+								
+// 								malhaDevice[0] = GetDeviceMemoryObjectID(balancingTargetID, count);
+// 								int malhaRead = malhaDevice[0];
+// 								if(enableSwapBuffer)
+// 								malhaRead = GetDeviceMemoryObjectID(swapBufferID, count);
+// 								borda[0] = offset[count]-(tamanhoBorda);
+// 								borda[0] = (borda[0] < 0) ? 0 : borda[0];
+// 								borda[1] = offset[count];
+// 								alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, count-1);
+
+// 								if(alvo%2 == 1)
+// 								{
+// 									MPI_Irecv(malha+(borda[0]*unitsPerElement), tamanhoBorda*unitsPerElement, MPI_CHAR , alvo, 0, MPI_COMM_WORLD, &receiveRequest);
+
+// 									dataEventoDispositivo[count] = ReadFromMemoryObject(count-meusDispositivosOffset, malhaRead, (malha+(borda[1]*unitsPerElement)), borda[1]*unitsPerElement*elementSize, tamanhoBorda*unitsPerElement*elementSize);
+// 									SynchronizeCommandQueue(count-meusDispositivosOffset);
+// 									MPI_Isend(malha+(borda[1]*unitsPerElement), tamanhoBorda*unitsPerElement, MPI_CHAR, alvo, 0, MPI_COMM_WORLD, &sendRequest);
+// 									MPI_Wait(&sendRequest, MPI_STATUS_IGNORE);
+// 									MPI_Wait(&receiveRequest, MPI_STATUS_IGNORE);
+// 									if (enableSwapBuffer) {
+									
+// 									}
+// 									else {
+// 									WriteToMemoryObject(count-meusDispositivosOffset, malhaDevice[0], (malha+(borda[0]*unitsPerElement)), borda[0]*unitsPerElement*elementSize, tamanhoBorda*unitsPerElement*elementSize);
+// 									SynchronizeCommandQueue(count-meusDispositivosOffset);
+// 									}
+// 								}
+// 							}
+// 							if(count == meusDispositivosOffset+meusDispositivosLength-1 && count < todosDispositivos-1)
+// 							{
+								
+// 								malhaDevice[0] = GetDeviceMemoryObjectID(balancingTargetID, count);
+// 								int malhaRead = malhaDevice[0];
+// 								if(enableSwapBuffer)
+// 								malhaRead = GetDeviceMemoryObjectID(swapBufferID, count);
+// 								borda[0] = (offset[count]+length[count])-(tamanhoBorda);
+// 								borda[0] = (borda[0] < 0) ? 0 : borda[0];
+// 								borda[1] = (offset[count]+length[count]);
+// 								alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, count+1);
+
+// 								if(alvo%2 == 0)
+// 								{
+// 									dataEventoDispositivo[count] = ReadFromMemoryObject(count-meusDispositivosOffset, malhaRead, (malha+(borda[1]*unitsPerElement)), borda[1]*unitsPerElement*elementSize, tamanhoBorda*unitsPerElement*elementSize);
+// 									SynchronizeCommandQueue(count-meusDispositivosOffset);
+// 									MPI_Isend(malha+(borda[1]*unitsPerElement), tamanhoBorda*unitsPerElement, MPI_CHAR, alvo, 0, MPI_COMM_WORLD, &sendRequest);
+// 									MPI_Irecv(malha+(borda[0]*unitsPerElement), tamanhoBorda*unitsPerElement, MPI_CHAR, alvo, 0, MPI_COMM_WORLD, &receiveRequest);
+// 									MPI_Wait(&sendRequest, MPI_STATUS_IGNORE);
+// 									MPI_Wait(&receiveRequest, MPI_STATUS_IGNORE);
+
+// 									WriteToMemoryObject(count-meusDispositivosOffset, malhaDevice[0], (malha+(borda[0]*unitsPerElement)), borda[0]*unitsPerElement*elementSize, tamanhoBorda*unitsPerElement*elementSize);
+// 									SynchronizeCommandQueue(count-meusDispositivosOffset);
+
+// 								}
+// 							}
+// 						}
+
+// 						//No mesmo processo, no primeiro passo.
+// 						if(passo == 0 && count >= meusDispositivosOffset && count < meusDispositivosOffset+meusDispositivosLength-1)
+// 						{
+							
+// 							malhaDevice[0] = GetDeviceMemoryObjectID(balancingTargetID, count);
+// 							malhaDevice[1] = GetDeviceMemoryObjectID(balancingTargetID, count+1);
+// 							int malhaRead = malhaDevice[0];
+// 							int malhaRead2 = malhaDevice[1];
+// 							if(enableSwapBuffer){
+// 							malhaRead = GetDeviceMemoryObjectID(swapBufferID, count);
+// 							malhaRead2 = GetDeviceMemoryObjectID(swapBufferID, count+1);
+// 							}
+// 							borda[0] = int(offset[count+1]-(tamanhoBorda));
+// 							borda[0] = (borda[0] < 0) ? 0 : borda[0];
+// 							borda[1] = int(offset[count+1]);
+// 							dataEventoDispositivo[count+0] = ReadFromMemoryObject(count-meusDispositivosOffset, malhaRead, (malha+(borda[0]*unitsPerElement)), borda[0]*unitsPerElement*elementSize, (int)(tamanhoBorda*unitsPerElement*elementSize));
+// 							SynchronizeCommandQueue(count+0-meusDispositivosOffset);
+
+// 							dataEventoDispositivo[count+1] = ReadFromMemoryObject(count+1-meusDispositivosOffset, malhaRead2, (malha+(borda[1]*unitsPerElement)), borda[1]*unitsPerElement*elementSize, (int)(tamanhoBorda*unitsPerElement*elementSize));
+// 							SynchronizeCommandQueue(count+1-meusDispositivosOffset);
+
+// 						}
+
+// 						//No mesmo processo, no segundo passo.
+// 						if(passo == 1 && count >= meusDispositivosOffset && count < meusDispositivosOffset+meusDispositivosLength-1)
+// 						{
+							
+// 							malhaDevice[0] = GetDeviceMemoryObjectID(balancingTargetID, count);
+// 							malhaDevice[1] = GetDeviceMemoryObjectID(balancingTargetID, count+1);
+// 							borda[0] = offset[count+1]-(tamanhoBorda);
+// 							borda[0] = (borda[0] < 0) ? 0 : borda[0];
+// 							borda[1] = offset[count+1];
+
+// 							WriteToMemoryObject(count+0-meusDispositivosOffset, malhaDevice[0], (malha+(borda[1]*unitsPerElement)), borda[1]*unitsPerElement*elementSize, (int)(tamanhoBorda*unitsPerElement*elementSize));
+// 							SynchronizeCommandQueue(count+0-meusDispositivosOffset);
+
+// 							WriteToMemoryObject(count+1-meusDispositivosOffset, malhaDevice[1], (malha+(borda[0]*unitsPerElement)), borda[0]*unitsPerElement*elementSize, (int)(tamanhoBorda*unitsPerElement*elementSize));
+// 							SynchronizeCommandQueue(count+1-meusDispositivosOffset);
+// 						}
+// 					}
+// 				}
+// 			}
+
+// delete[] malha;
+// delete[] borda;
+// delete[] malhaDevice;
+// delete[] dataEventoDispositivo;
+// }
+
 void OpenCLWrapper::Comms(){
-size_t tamanhoBorda = sdSize;
+int tamanhoBorda = sdSize;
 char *malha = new char[nElements * elementSize * unitsPerElement];
 //GatherResults(balancingTargetID, malha);
 int *malhaDevice = new int[2];
@@ -1501,7 +1934,7 @@ MPI_Request sendRequest, receiveRequest;
 							borda[1] = int(offset[count+1]);
 							dataEventoDispositivo[count+0] = ReadFromMemoryObject(count-meusDispositivosOffset, malhaDevice[0], (malha+(borda[0]*unitsPerElement)), borda[0]*unitsPerElement*elementSize, tamanhoBorda*unitsPerElement*elementSize);
 							SynchronizeCommandQueue(count+0-meusDispositivosOffset);
-
+                            
 							dataEventoDispositivo[count+1] = ReadFromMemoryObject(count+1-meusDispositivosOffset, malhaDevice[1], (char *)(malha+(borda[1]*unitsPerElement)), borda[1]*unitsPerElement*elementSize, tamanhoBorda*unitsPerElement*elementSize);
 							SynchronizeCommandQueue(count+1-meusDispositivosOffset);
 
@@ -1530,5 +1963,9 @@ MPI_Request sendRequest, receiveRequest;
 delete[] malha;
 }
 
+void OpenCLWrapper::setSwapBuffer(int id) {
 
+enableSwapBuffer = true;
+swapBufferID = id;
 
+}
