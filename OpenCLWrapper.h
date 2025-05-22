@@ -16,22 +16,22 @@ public:
     int InitDevices(const std::string &_device_types, const unsigned int _maxNumberOfDevices);
     void FinishParallelProcessor();
 
-    int AllocateMemoryObject(int _size, cl_mem_flags _memoryType, void *_hostMemory);    
+    int AllocateMemoryObject(size_t _size, cl_mem_flags _memoryType, void *_hostMemory);    
     int CreateKernel(int devicePosition, const char *source, const char *kernelName);
     void SetKernelAttribute(int devicePosition, int kernelID, int attribute, int memoryObjectID);
     void SetKernelArg(int kernelID, int argIndex, size_t argSize, const void *argValue);
     void ExecuteKernel();
     void GatherResults(int dataIndex,void *resultData);
     void setKernel(const std::string &sourceFile, const std::string &kernelName);
-    int WriteToMemoryObject(int devicePosition, int memoryObjectID, const char *data, int offset, int size);
-    int ReadFromMemoryObject(int devicePosition, int memoryObjectID, char *data, int offset, int size);
-    void setLoadBalancer(int _elementSize, int N_Elements, int units_per_elements, int _divisionSize);
-    void setSubdomainBoundary(int _sdSize, int _nArgs, int * _args);
+    int WriteToMemoryObject(int devicePosition, int memoryObjectID, const char *data, int offset, size_t size);
+    int ReadFromMemoryObject(int devicePosition, int memoryObjectID, char *data, int offset, size_t size);
+    void setLoadBalancer(size_t _elementSize, int N_Elements, int units_per_elements, int _divisionSize);
+    void setSubdomainBoundary(size_t _sdSize, int _nArgs, int * _args);
     void setAttribute(int attribute, int globalMemoryObjectID);
-    int WriteObject(int GlobalObjectID, const char *data, int offset, int size);
+    int WriteObject(int GlobalObjectID, const char *data, int offset, size_t size);
     void LoadBalancing();
     void setBalancingTargetID(int targetID);
-    void setSwapBuffer(int id);
+
     int getMaxNumberOfPlatforms() const;
     void setMaxNumberOfPlatforms(int value);
     int getMaxNumberOfDevices() const;
@@ -48,7 +48,7 @@ public:
 private:
     int InitParallelProcessor();
     void Initialize();
-    
+    int BuildAndCreateKernels(const char *sourcePath,const char *kernelName);
     void PrecisaoBalanceamento();
     void ComputarCargas(const long int *ticks, const float *cargasAntigas, float *cargasNovas, int participantes);
     int RecuperarPosicaoHistograma(int *histograma, int tamanho, int indice);
@@ -56,8 +56,8 @@ private:
     float ComputarDesvioPadraoPercentual(const long int *ticks, int participantes);
     float ComputarNorma(const float *cargasAntigas, const float *cargasNovas, int participantes);
     void initializeLengthOffset(int offset, int length, int deviceIndex);
-    int CreateMemoryObject(int devicePosition, int size, cl_mem_flags memoryType, void *hostMemory);
-    int elementSize;
+    int CreateMemoryObject(int devicePosition, size_t size, cl_mem_flags memoryType, void *hostMemory);
+    size_t elementSize;
     int divisionSize;
     int unitsPerElement;
     int balancingTargetID;
@@ -70,7 +70,7 @@ private:
     double writeByte = 0.0;
     std::string kernelSourceFile;
     std::string kernelFunctionName;
-    int sdSize;
+    size_t sdSize;
     cl_platform_id *platformIDs;
     cl_uint numberOfPlatforms;
     cl_device_id *deviceList;
@@ -120,8 +120,8 @@ private:
     int *DataToKernelDispositivo;
     int **swapBufferDispositivo;
     float *tempos;
-    int *offset;
-    int *length;
+    size_t *offset;
+    size_t *length;
     float latencia, banda, tempoBalanceamento, fatorErro;
     int *kernelDispositivo;
     int *kernelEventoDispositivo;
@@ -140,8 +140,6 @@ private:
     int *memObjects;
     int nArgs;
     int *args;
-    int swapBufferID;
-    bool enableSwapBuffer = false;
     // Parâmetros ajustáveis
     int maxNumberOfPlatforms = 10;
     int maxNumberOfDevices = 10;
@@ -156,7 +154,7 @@ private:
     int GetMemoryObjectPosition(int devicePosition, int memoryObjectID);
     int GetKernelPosition(int devicePosition, int kernelID);
 
-    int RunKernel(int devicePosition, int kernelID, int parallelDataOffset, int parallelData, int workGroupSize);
+    int RunKernel(int devicePosition, int kernelID, int parallelDataOffset, size_t parallelData, int workGroupSize);
     void SynchronizeCommandQueue(int devicePosition);
     void SynchronizeEvent(int eventPosition);
     long int GetEventTaskOverheadTicks(int devicePosition, int eventPosition);
