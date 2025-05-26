@@ -31,7 +31,7 @@ public:
     int WriteObject(int GlobalObjectID, const char *data, int offset, size_t size);
     void LoadBalancing();
     void setBalancingTargetID(int targetID);
-
+    void setSwapBufferID(int swapID);
     int getMaxNumberOfPlatforms() const;
     void setMaxNumberOfPlatforms(int value);
     int getMaxNumberOfDevices() const;
@@ -76,6 +76,8 @@ private:
     cl_device_id *deviceList;
     cl_uint numberOfDevices;
     bool sdSet = false;
+    bool enableSwapBuffer = false;
+    int swapBufferID;
     struct Device {
         cl_device_id deviceID;
         cl_device_type deviceType;

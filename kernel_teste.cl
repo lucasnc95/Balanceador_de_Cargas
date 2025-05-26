@@ -1,6 +1,6 @@
 // kernelSomaVizinhos.cl
 __kernel void kernelSomaVizinhos(__global float* vetor, __global float* vetor_aux) {
-    int N = 15;
+    int N = 16;
     int i = get_global_id(0);
     if (i < N) {
         float left  = (i > 0)     ? vetor_aux[i - 1] : 0.0f;
