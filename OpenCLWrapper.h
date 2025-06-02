@@ -111,7 +111,13 @@ private:
     int automaticNumber = 0;
 
     // Variáveis do balanceador de carga
-    
+        double *localLat ;
+ 
+
+    double *globLat;
+    double *globBan;
+    double *globRd;
+    double *globWr;
     long int offsetComputacao;
     long int lengthComputacao;
 	int *dispositivosWorld;
@@ -142,6 +148,7 @@ private:
     int *memObjects;
     int nArgs;
     int *args;
+    int precision;
     // Parâmetros ajustáveis
     int maxNumberOfPlatforms = 10;
     int maxNumberOfDevices = 10;
@@ -155,7 +162,8 @@ private:
     int Maximum(int a, int b);
     int GetMemoryObjectPosition(int devicePosition, int memoryObjectID);
     int GetKernelPosition(int devicePosition, int kernelID);
-
+    void CollectOverheadsPerDevice(int deviceID,double &lat, double &ban, double &rd, double &wr);
+    void CollectOverheads();
     int RunKernel(int devicePosition, int kernelID, int parallelDataOffset, size_t parallelData, int workGroupSize);
     void SynchronizeCommandQueue(int devicePosition);
     void SynchronizeEvent(int eventPosition);

@@ -957,31 +957,16 @@ void OpenCLWrapper::setLoadBalancer(size_t _elementSize, int N_Elements, int uni
 
 void OpenCLWrapper::Probing()
 {
-  
-
-    double tempoInicioProbing = MPI_Wtime();
-    double localLatencia = 0.0, localBanda = 0.0;
-	double localwriteByte1 = 0.0;
-    double localwriteByte2 = 0.0;
-    if (nElements <= 0 || unitsPerElement <= 0 || elementSize <= 0) {
-        std::cerr << "Erro: Valores inválidos para nElements, unitsPerElement ou elementSize." << std::endl;
-        return;
-    }
-
-    char *auxData = new char[nElements * unitsPerElement * elementSize];
-    
-    if (!auxData) {
-        std::cerr << "Erro: Falha ao alocar memória para auxData." << std::endl;
-        return;
-    }
-
-
-
+    double localLat = 0, localBan = 0, localW = 0;
+    char *auxData = new char[nElements*unitsPerElement*elementSize];
     int somaLengthAntes = 0;
-    for (int i = 0; i < todosDispositivos; i++) {
-        somaLengthAntes += length[i];
-    }
-    std::cout << "Soma do length antes do probing: " << somaLengthAntes << std::endl;
+    
+    CollectOverheads(i, localLat, localBan, localW);
+   
+   
+    MPI_Allreduce(&localLat, &latencia,    1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+    MPI_Allreduce(&localBan, &banda,       1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+    MPI_Allreduce(&localW,   &writeByte,   1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
 
     PrecisaoBalanceamento();
    
@@ -1032,8 +1017,8 @@ void OpenCLWrapper::Probing()
 
                             double tempoInicioBanda = MPI_Wtime();
                             MPI_Ssend(malha + (overlap[0] * unitsPerElement), sizeCarga, MPI_CHAR, alvo, 0, MPI_COMM_WORLD);
-                            double aux = (MPI_Wtime() - tempoInicioBanda) / sizeCarga;
-                            localBanda = aux > localBanda ? aux : localBanda;
+                            
+                            
                         }
                     }
                 }
@@ -1064,8 +1049,7 @@ void OpenCLWrapper::Probing()
 
                             WriteToMemoryObject(count - meusDispositivosOffset, dataDevice[0], malha + (intersecaoOffset * unitsPerElement), intersecaoOffset * unitsPerElement * elementSize, intersecaoLength * unitsPerElement * elementSize);
                             SynchronizeCommandQueue(count - meusDispositivosOffset);
-							double tempoFimwriteByte = MPI_Wtime() - tempoIniciowriteByte;
-							localwriteByte1 = tempoFimwriteByte > localwriteByte1 ? tempoFimwriteByte : localwriteByte1;
+							
                         }
                         else
                         {
@@ -1080,14 +1064,14 @@ void OpenCLWrapper::Probing()
                                 double tempoInicioLatencia = MPI_Wtime();
                                 MPI_Ssend(overlap, 2, MPI_INT, alvo, 0, MPI_COMM_WORLD);
                                 double aux = (MPI_Wtime() - tempoInicioLatencia) / 2;
-                                localLatencia = aux > localLatencia ? aux : localLatencia;
+                                
 
                                 MPI_Recv(malha + (overlap[0] * unitsPerElement), overlap[1] * unitsPerElement, MPI_CHAR, alvo, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 								double tempoIniciowriteByte2 = MPI_Wtime();
                                 WriteToMemoryObject(count - meusDispositivosOffset, dataDevice, malha + (overlap[0] * unitsPerElement), overlap[0] * unitsPerElement * elementSize, overlap[1] * unitsPerElement * elementSize);
                                 SynchronizeCommandQueue(count - meusDispositivosOffset);
 								double tempoFimwriteByte = MPI_Wtime() - tempoIniciowriteByte2;
-								localwriteByte2 = tempoFimwriteByte > localwriteByte2 ? tempoFimwriteByte : localwriteByte2;
+								
                             }
                         }
                     }
@@ -1112,17 +1096,9 @@ void OpenCLWrapper::Probing()
     std::cout << "\n";
 
     memcpy(cargasAntigas, cargasNovas, sizeof(float) * todosDispositivos);
-	double writeByte1, writeByte2;
-    MPI_Allreduce(&localLatencia, &latencia, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
-    MPI_Allreduce(&localBanda, &banda, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
-	MPI_Allreduce(&localwriteByte1, &writeByte1, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
-	MPI_Allreduce(&localwriteByte2, &writeByte2, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
-    writeByte = writeByte1 + writeByte2;
-	MPI_Barrier(MPI_COMM_WORLD);
-    double tempoFimProbing = MPI_Wtime();
-    tempoBalanceamento += tempoFimProbing - tempoInicioProbing;
-    fatorErro = tempoBalanceamento;
-    delete[] auxData;
+
+
+   
 }
 
 
@@ -1987,113 +1963,6 @@ MPI_Request sendRequest, receiveRequest;
 delete[] malha;
 }
 
-// void OpenCLWrapper::Comms() {
-//     const size_t bdCells = sdSize * unitsPerElement;
-//     const size_t bdBytes = bdCells * elementSize;
-//     char *hostSend = (char*)malloc(bdBytes);
-//     char *hostRecv = (char*)malloc(bdBytes);
-
-//     MPI_Request sendReq, recvReq;
-
-//     // Quatro passos: 0/1 = intra‐subdomínio; 2/3 = inter‐rank MPI
-//     for (int passo = 0; passo < 4; ++passo) {
-//         for (int global = 0; global < todosDispositivos; ++global) {
-//             if (global < meusDispositivosOffset || 
-//                 global >= meusDispositivosOffset + meusDispositivosLength) continue;
-
-//             int localIdx = global - meusDispositivosOffset;
-//             auto &dev = devices[localIdx];
-//             cl_command_queue queue = dev.dataCommandQueue;
-
-//             // obtenha o cl_mem ID
-//             int memPos = GetDeviceMemoryObjectID(balancingTargetID, localIdx);
-//             if (memPos < 0 || memPos >= dev.numberOfMemoryObjects) continue;
-//             cl_mem buf = dev.memoryObjects[memPos];
-
-//             // Offsets de byte
-//             size_t off0 = 0;
-//             int peer    = -1;
-
-//             // == Passo 0: copiar borda direita do bloco para a borda esquerda do bloco+1 ==
-//             if (passo == 0 && localIdx+1 < meusDispositivosLength) {
-//                 size_t base = offset[global+1] * unitsPerElement * elementSize;
-//                 off0 = base - bdBytes;                // início da borda direita
-//                 // Map le do meu buffer
-//                 void *r = clEnqueueMapBuffer(queue, buf, CL_TRUE, CL_MAP_READ,
-//                                              off0, bdBytes, 0,nullptr,nullptr,nullptr);
-//                 memcpy(hostSend, r, bdBytes);
-//                 clEnqueueUnmapMemObject(queue, buf, r, 0,nullptr,nullptr);
-
-//                 // Escreve no próximo dispositivo
-//                 int memPos2 = GetDeviceMemoryObjectID(balancingTargetID, localIdx+1);
-//                 if (memPos2>=0 && memPos2<devices[localIdx+1].numberOfMemoryObjects) {
-//                     cl_mem buf2 = devices[localIdx+1].memoryObjects[memPos2];
-//                     void *w = clEnqueueMapBuffer(queue, buf2, CL_TRUE, CL_MAP_WRITE,
-//                                                  off0, bdBytes, 0,nullptr,nullptr,nullptr);
-//                     memcpy(w, hostSend, bdBytes);
-//                     clEnqueueUnmapMemObject(queue, buf2, w, 0,nullptr,nullptr);
-//                 }
-//             }
-//             // == Passo 1: copiar borda esquerda do bloco+1 para a borda direita do bloco ==
-//             else if (passo == 1 && localIdx+1 < meusDispositivosLength) {
-//                 size_t base = offset[global+1] * unitsPerElement * elementSize;
-//                 off0 = base - bdBytes;                // início da borda direita
-//                 // Map le do próximo buffer
-//                 int memPos2 = GetDeviceMemoryObjectID(balancingTargetID, localIdx+1);
-//                 if (memPos2<0 || memPos2>=devices[localIdx+1].numberOfMemoryObjects) continue;
-//                 cl_mem buf2 = devices[localIdx+1].memoryObjects[memPos2];
-//                 void *r = clEnqueueMapBuffer(queue, buf2, CL_TRUE, CL_MAP_READ,
-//                                              off0, bdBytes, 0,nullptr,nullptr,nullptr);
-//                 memcpy(hostSend, r, bdBytes);
-//                 clEnqueueUnmapMemObject(queue, buf2, r, 0,nullptr,nullptr);
-
-//                 // Escreve de volta no meu buffer
-//                 void *w = clEnqueueMapBuffer(queue, buf, CL_TRUE, CL_MAP_WRITE,
-//                                              off0, bdBytes, 0,nullptr,nullptr,nullptr);
-//                 memcpy(w, hostSend, bdBytes);
-//                 clEnqueueUnmapMemObject(queue, buf, w, 0,nullptr,nullptr);
-//             }
-//             // == Passos 2 e 3: troca MPI inter‐ranks ==
-//             else if (passo >= 2 && world_size > 1) {
-//                 if (passo == 2 && global == meusDispositivosOffset) {
-//                     off0 = offset[global] * unitsPerElement * elementSize;
-//                     peer = RecuperarPosicaoHistograma(dispositivosWorld, world_size, global-1);
-//                 }
-//                 else if (passo == 3 && global == meusDispositivosOffset+meusDispositivosLength-1) {
-//                     off0 = (offset[global]+length[global]-sdSize) * unitsPerElement * elementSize;
-//                     peer = RecuperarPosicaoHistograma(dispositivosWorld, world_size, global+1);
-//                 }
-//                 if (peer >= 0) {
-//                     // lê do buffer local
-//                     void *r = clEnqueueMapBuffer(queue, buf, CL_TRUE, CL_MAP_READ,
-//                                                  off0, bdBytes, 0,nullptr,nullptr,nullptr);
-//                     memcpy(hostSend, r, bdBytes);
-//                     clEnqueueUnmapMemObject(queue, buf, r, 0,nullptr,nullptr);
-
-//                     // MPI exchange
-//                     MPI_Irecv(hostRecv, bdBytes, MPI_CHAR, peer, 0, MPI_COMM_WORLD, &recvReq);
-//                     MPI_Isend(hostSend, bdBytes, MPI_CHAR, peer, 0, MPI_COMM_WORLD, &sendReq);
-//                     MPI_Wait(&sendReq, MPI_STATUS_IGNORE);
-//                     MPI_Wait(&recvReq, MPI_STATUS_IGNORE);
-
-//                     // escreve de volta
-//                     void *w = clEnqueueMapBuffer(queue, buf, CL_TRUE, CL_MAP_WRITE,
-//                                                  off0, bdBytes, 0,nullptr,nullptr,nullptr);
-//                     memcpy(w, hostRecv, bdBytes);
-//                     clEnqueueUnmapMemObject(queue, buf, w, 0,nullptr,nullptr);
-//                 }
-//             }
-//         }
-//     }
-
-//     // garante que tudo foi concluído
-//     for (int d = 0; d < meusDispositivosLength; ++d) {
-//         clFinish(devices[d].dataCommandQueue);
-//     }
-
-//     free(hostSend);
-//     free(hostRecv);
-// }
 
 
 void OpenCLWrapper::setSwapBufferID(int swapID) {
@@ -2103,4 +1972,147 @@ void OpenCLWrapper::setSwapBufferID(int swapID) {
     enableSwapBuffer = true;
 
 
+}
+
+void OpenCLWrapper::CollectOverheads(int deviceID, double &localLat, double &localBan, double &localRead, double &localWrite) {
+    size_t totalBytes = (size_t)nElements * unitsPerElement * elementSize;
+    char* benchBuf = new char[totalBytes];
+
+    // 1) Latência (ping 0 bytes)
+    localLat = 0.0;
+    for (int p = 0; p < precision; ++p) {
+        int alvo = RecuperarPosicaoHistograma(dispositivosWorld, todosDispositivos, deviceID);
+        double t0 = MPI_Wtime();
+        MPI_Ssend(nullptr, 0, MPI_CHAR, alvo, 0, MPI_COMM_WORLD);
+        char dummy;
+        MPI_Recv(&dummy, 1, MPI_CHAR, alvo, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        localLat += (MPI_Wtime() - t0);
+    }
+    localLat /= precision;
+
+    // 2) Banda (envio e recepção do buffer inteiro)
+    localBan = 0.0;
+    for (int p = 0; p < precision; ++p) {
+        int alvo = RecuperarPosicaoHistograma(dispositivosWorld, todosDispositivos, deviceID);
+        double t0 = MPI_Wtime();
+        MPI_Ssend(benchBuf, totalBytes, MPI_CHAR, alvo, 0, MPI_COMM_WORLD);
+        MPI_Recv(benchBuf, 1, MPI_CHAR, alvo, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        localBan += (MPI_Wtime() - t0) / (double)totalBytes;
+    }
+    localBan /= precision;
+
+    // 3) readBuffer (device → host)
+    int memObj = GetDeviceMemoryObjectID(balancingTargetID, world_rank);
+    localRead = 0.0;
+    for (int p = 0; p < precision; ++p) {
+        double t0 = MPI_Wtime();
+        ReadFromMemoryObject(deviceID, memObj, benchBuf, 0, totalBytes);
+        SynchronizeCommandQueue(world_rank-meusDispositivosOffset);
+        localRead += (MPI_Wtime() - t0) / (double)totalBytes;
+    }
+    localRead /= precision;
+
+    // 4) writeBuffer (host → device)
+    localWrite = 0.0;
+    for (int p = 0; p < precision; ++p) {
+        double t0 = MPI_Wtime();
+        WriteToMemoryObject(deviceID, memObj, benchBuf, 0, totalBytes);
+        SynchronizeCommandQueue(deviceID-meusDispositivosOffset);
+        localWrite += (MPI_Wtime() - t0) / (double)totalBytes;
+    }
+    localWrite /= precision;
+}
+
+// 1) Mede latência, banda, read e write para um único dispositivo (deviceID global)
+void OpenCLWrapper::CollectOverheadsPerDevice(int deviceID,double &lat, double &ban, double &rd, double &wr)
+ {
+    size_t totalBytes = (size_t)nElements * unitsPerElement * elementSize;
+    char *benchBuf = new char[totalBytes];
+
+    // LATÊNCIA (ping 0 bytes)
+    lat = 0.0;
+    for (int p = 0; p < precision; ++p) {
+        int alvo = RecuperarPosicaoHistograma(dispositivosWorld,
+                                              todosDispositivos,
+                                              deviceID);
+        double t0 = MPI_Wtime();
+        // ping vazio
+        MPI_Ssend(nullptr, 0, MPI_CHAR, alvo, 0, MPI_COMM_WORLD);
+        char dummy;
+        MPI_Recv(&dummy, 1, MPI_CHAR, alvo, 0, MPI_COMM_WORLD,
+                 MPI_STATUS_IGNORE);
+        lat += (MPI_Wtime() - t0);
+    }
+    lat /= precision;
+
+    // BANDA (envio e recepção do buffer inteiro)
+    ban = 0.0;
+    for (int p = 0; p < precision; ++p) {
+        int alvo = RecuperarPosicaoHistograma(dispositivosWorld,
+                                              todosDispositivos,
+                                              deviceID);
+        double t0 = MPI_Wtime();
+        MPI_Ssend(benchBuf, totalBytes, MPI_CHAR, alvo, 0, MPI_COMM_WORLD);
+        // resposta rápida
+        MPI_Recv(benchBuf, 1, MPI_CHAR, alvo, 0, MPI_COMM_WORLD,
+                 MPI_STATUS_IGNORE);
+        ban += (MPI_Wtime() - t0) / (double)totalBytes;
+    }
+    ban /= precision;
+
+    // READ BUFFER (device → host)
+    int localIdx = deviceID - meusDispositivosOffset;
+    int memObj   = GetDeviceMemoryObjectID(balancingTargetID, deviceID);
+    rd = 0.0;
+    for (int p = 0; p < precision; ++p) {
+        double t0 = MPI_Wtime();
+        ReadFromMemoryObject(localIdx, memObj, benchBuf, 0, totalBytes);
+        SynchronizeCommandQueue(localIdx);
+        rd += (MPI_Wtime() - t0) / (double)totalBytes;
+    }
+    rd /= precision;
+
+    // WRITE BUFFER (host → device)
+    wr = 0.0;
+    for (int p = 0; p < precision; ++p) {
+        double t0 = MPI_Wtime();
+        WriteToMemoryObject(localIdx, memObj, benchBuf, 0, totalBytes);
+        SynchronizeCommandQueue(localIdx);
+        wr += (MPI_Wtime() - t0) / (double)totalBytes;
+    }
+    wr /= precision;
+
+    delete[] benchBuf;
+}
+
+// 2) Para cada dispositivo local mede e depois faz MPI_Allreduce para todos
+void OpenCLWrapper::CollectOverheads() {
+    // aloca arrays locais e globais
+double *localLat = new double[meusDispositivosLength];
+double  *localBan = new double[meusDispositivosLength];
+double  *localRd  = new double[meusDispositivosLength];
+double   *localWr  = new double[meusDispositivosLength];
+
+globLat = new double[meusDispositivosLength];
+globBan = new double[meusDispositivosLength];
+globRd  = new double[meusDispositivosLength];
+globWr  = new double[meusDispositivosLength];
+
+    // 1) cada rank mede só seus dispositivos
+    for (int i = 0; i < meusDispositivosLength; ++i) {
+        int deviceID = meusDispositivosOffset + i;
+        CollectOverheadsPerDevice(deviceID,localLat[i], localBan[i], localRd [i], localWr [i]);
+    }
+
+    // 2) faz Allreduce máxima sobre cada elemento do array local
+    MPI_Allreduce(localLat, globLat, meusDispositivosLength,MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+    MPI_Allreduce(localBan, globBan, meusDispositivosLength,MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+    MPI_Allreduce(localRd,  globRd,  meusDispositivosLength,MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+    MPI_Allreduce(localWr,  globWr,  meusDispositivosLength,MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+
+
+
+    // libera arrays temporários
+    delete[] localLat; delete[] localBan;
+    delete[] localRd;  delete[] localWr;
 }
