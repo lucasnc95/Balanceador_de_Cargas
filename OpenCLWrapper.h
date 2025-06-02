@@ -127,10 +127,10 @@ private:
     float *cargasAntigas;
     int *DataToKernelDispositivo;
     int **swapBufferDispositivo;
-    float *tempos;
+    double *tempos;
     size_t *offset;
     size_t *length;
-    float latencia, banda, tempoBalanceamento, fatorErro;
+    double latencia, banda, tempoBalanceamento, readByte, fatorErro;
     int *kernelDispositivo;
     int *kernelEventoDispositivo;
     int *parametrosMalhaDispositivo;
@@ -148,7 +148,7 @@ private:
     int *memObjects;
     int nArgs;
     int *args;
-    int precision;
+    int precision = 10;
     // Parâmetros ajustáveis
     int maxNumberOfPlatforms = 10;
     int maxNumberOfDevices = 10;

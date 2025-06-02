@@ -77,13 +77,13 @@
 
 //Tipos de celulas.
 #define CELULA_A		    0
-#define CELULA_MR		1
-#define CELULA_MA		2
+#define CELULA_MR			1
+#define CELULA_MA			2
 #define CELULA_N		    3
-#define CELULA_CH		4
-#define CELULA_ND		5
+#define CELULA_CH			4
+#define CELULA_ND			5
 #define CELULA_G		    6
-#define CELULA_CA		7
+#define CELULA_CA			7
 #define MALHA_TOTAL_CELULAS	8
 
 //Informacoes de acesso à estrutura "parametrosMalha".
@@ -178,7 +178,7 @@ int main(int argc, char** argv) {
     openCL.InitDevices("ALL_DEVICES", 10);  
     openCL.setKernel("kernels.cl", "ProcessarPontos");
 
-    int x = 10, y = 10, z = 10;
+    int x = 100, y = 100, z = 100;
     int tam = x * y * z * MALHA_TOTAL_CELULAS * sizeof(float);  // Tamanho correto da malha
     int *parametros = new int[NUMERO_PARAMETROS_MALHA];
     float *malha = new float[tam];  // Alocar a malha corretamente
@@ -210,11 +210,9 @@ int main(int argc, char** argv) {
 	openCL.setAttribute(2, aMemObj);
     openCL.setSubdomainBoundary(sub, 2, vetArgs);
 	openCL.setBalancingTargetID(bMemObj);
-	//openCL.Probing();
+	openCL.Probing();
     for (int x = 0; x < 10000; x++) {
 		
-	//openCL.GatherResults(bMemObj, malhaAux);
-	//openCL.WriteObject(cMemObj, (char *) malhaAux, 0, tam*sizeof(float));
 		 if (x % 2 == 0) {
             openCL.setAttribute(0, bMemObj);
             openCL.setAttribute(1, cMemObj);
@@ -228,11 +226,13 @@ int main(int argc, char** argv) {
             openCL.setSwapBufferID(bMemObj);
         }
 
-		// if(x % 1000 == 0)
-		// openCL.LoadBalancing();
+		if(x > 0 && x % 1000 == 0)
+		openCL.LoadBalancing();
 
 
 		openCL.ExecuteKernel();
+
+
 		
 		
         
@@ -240,7 +240,7 @@ int main(int argc, char** argv) {
 
 	openCL.GatherResults(bMemObj, malhaAux);
 	
-        LerPontosHIS(malhaAux, parametros);
+       // LerPontosHIS(malhaAux, parametros);
 	  
 	double tempoFim = MPI_Wtime();
 	std::cout<<"Tempo execução:"<<tempoFim-tempoInicio<<std::endl;
