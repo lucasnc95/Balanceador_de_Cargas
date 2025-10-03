@@ -1,78 +1,4 @@
-// #include "OpenCLWrapper.h"
-// #include <iostream>
-
-// int main(int argc, char** argv) {
-     
-//     OpenCLWrapper openCL(argc, argv);
-//     openCL.InitDevices("ALL_DEVICES", 10);  
-//     openCL.setKernel("kernel_teste.cl", "kernelSomaVizinhos");
-
-    
-//     int tam = 16;  
-//     float *malha = new float[tam];  
-
-//     double	tempoInicio = MPI_Wtime();
-    
-// 	for(int i = 0; i < tam; i++)
-// 	malha[i] = 1;
-// 	int total_elements = 16;
-
-//     // Configuração do balanceador de carga no OpenCLWrapper
-//     int sub = 1  ;
-//     openCL.setLoadBalancer(sizeof(float), total_elements, 1, sub);
-
-//     // Alocar objetos de memória OpenCL
-//     int bMemObj = openCL.AllocateMemoryObject(tam * sizeof(float), CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, malha);
-//     int cMemObj = openCL.AllocateMemoryObject(tam * sizeof(float), CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, malha);
-
-//     float *malhaAux = new float[tam];  // Para armazenar os resultados
-// 	int *vetArgs = new int[2];
-// 	vetArgs[0] = bMemObj;
-// 	vetArgs[1] = cMemObj;
-
-// 	int id;
-//     // Definir atributos de kernel
-// 	openCL.setAttribute(0, bMemObj);
-//     openCL.setAttribute(1, cMemObj);
-//     openCL.setSubdomainBoundary(sub, 2, vetArgs);
-// 	openCL.setBalancingTargetID(bMemObj);
-// 	//openCL.Probing();
-//     for (int x = 0; x < 5; x++) {
-// 		 if (x % 2 == 0) {
-//            openCL.setAttribute(0, bMemObj);
-//            openCL.setAttribute(1, cMemObj);
-//            openCL.setBalancingTargetID(bMemObj);
-//            openCL.setSwapBufferID(cMemObj);
-           
-// 		   id = bMemObj;
-//         } 
-// 		else {
-//             openCL.setAttribute(0, cMemObj);
-//             openCL.setAttribute(1, bMemObj);
-//             openCL.setBalancingTargetID(cMemObj);
-//             openCL.setSwapBufferID(bMemObj);
-            
-// 			id = cMemObj;
-//         }
-//        // openCL.LoadBalancing();
-// 		openCL.ExecuteKernel();        
-//     }
-
-// 		openCL.GatherResults(id, malhaAux);
-	
-//     for(int i = 0; i < tam; i++)
-// 	std::cout<<"vet["<<i<<"] = "<<malhaAux[i]<<std::endl;
-
-// 	double tempoFim = MPI_Wtime();
-// 	std::cout<<"Tempo execução:"<<tempoFim-tempoInicio<<std::endl;
-   
-//     delete[] malha;
-//     delete[] malhaAux;
-	
-//     return 0;
-// }
-
-#include "OpenCLWrapper.h"
+/*#include "OpenCLWrapper.h"
 #include <iostream>
 
 //Tipos de celulas.
@@ -178,8 +104,8 @@ int main(int argc, char** argv) {
     openCL.InitDevices("ALL_DEVICES", 10);  
     openCL.setKernel("kernels.cl", "ProcessarPontos");
 
-    int x = 100, y = 100, z = 100;
-    int tam = x * y * z * MALHA_TOTAL_CELULAS * sizeof(float);  // Tamanho correto da malha
+    int x = 6, y = 6, z = 6;
+    int tam = x * y * z * MALHA_TOTAL_CELULAS;   
     int *parametros = new int[NUMERO_PARAMETROS_MALHA];
     float *malha = new float[tam];  // Alocar a malha corretamente
 
@@ -210,8 +136,8 @@ int main(int argc, char** argv) {
 	openCL.setAttribute(2, aMemObj);
     openCL.setSubdomainBoundary(sub, 2, vetArgs);
 	openCL.setBalancingTargetID(bMemObj);
-	openCL.Probing();
-    for (int x = 0; x < 10000; x++) {
+//	openCL.Probing();
+    for (int x = 0; x < 1; x++) {
 		
 		 if (x % 2 == 0) {
             openCL.setAttribute(0, bMemObj);
@@ -226,8 +152,8 @@ int main(int argc, char** argv) {
             openCL.setSwapBufferID(bMemObj);
         }
 
-		if(x > 0 && x % 1000 == 0)
-		openCL.LoadBalancing();
+//		if(x > 0 && x % 1000 == 0)
+//		openCL.LoadBalancing();
 
 
 		openCL.ExecuteKernel();
@@ -238,179 +164,105 @@ int main(int argc, char** argv) {
         
     }
 
-	openCL.GatherResults(bMemObj, malhaAux);
-	
-       // LerPontosHIS(malhaAux, parametros);
-	  
-	double tempoFim = MPI_Wtime();
-	std::cout<<"Tempo execução:"<<tempoFim-tempoInicio<<std::endl;
-    // Liberar memória alocada
+	int rank = openCL.getWorldRank();
+        openCL.GatherResults(bMemObj, malhaAux);
+//	printf("Meu rank (main): %i", rank);
+        if(rank == 0)
+        {
+        LerPontosHIS(malhaAux, parametros);
+        double tempoFim = MPI_Wtime();
+        std::cout<<"Tempo execução:"<<tempoFim-tempoInicio<<std::endl;
+        }
+
     delete[] parametros;
     delete[] malha;
     delete[] malhaAux;
-	
     return 0;
 }
 
+*/
 
 
+#include "OpenCLWrapper.h"
+#include <iostream>
 
+int main(int argc, char** argv) {
 
-// return 0;
+    OpenCLWrapper openCL(argc, argv);
+//    printf("iniciar devices... \n");
+    openCL.InitDevices("ALL_DEVICES", 10);
+  //  printf("iniciados os devices, setando o kernel... \n");
+    openCL.setKernel("kernel_teste.cl", "kernelSomaVizinhos");
 
+    int tam = 16;
+    float *malha = new float[tam];
 
+    double	tempoInicio = MPI_Wtime();
 
+	for(int i = 0; i < tam; i++)
+	malha[i] = 1;
+	int total_elements = 16;
 
-// }
+    // Configuração do balanceador de carga no OpenCLWrapper
+    int sub = 1  ;
+    openCL.setLoadBalancer(sizeof(float), total_elements, 1, sub);
 
+    // Alocar objetos de memória OpenCL
+    int bMemObj = openCL.AllocateMemoryObject(tam * sizeof(float), CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, malha);
+   // printf("Alocando a...\n");
+    int cMemObj = openCL.AllocateMemoryObject(tam * sizeof(float), CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, malha);
+   // printf("Alocando b...\n");
+std::cout<<"b memObj: "<<bMemObj<<" c memObj: "<<cMemObj<<std::endl;
 
-// int main(int argc, char **argv) {
-//     OpenCLWrapper openCL(argc, argv);
-    
-//     openCL.InitDevices("ALL_DEVICES", 10);  
-//     openCL.setKernel("kernel.cl", "vectorAdd");
-//     long unsigned int N = 33554432*2*2;
-//     float* a = new float[N];
-//     float* b = new float[N];
-//     float* result = new float[N];
-//     float* result2 = new float[N];
- 
-//     for (int i = 0; i < N; ++i) {
-//         a[i] = 1.0f;
-//         b[i] = 2.0f;
-//         result[i] = 0.0f; 
-//     }
+    float *malhaAux = new float[tam];  // Para armazenar os resultados
+	int *vetArgs = new int[2];
+	vetArgs[0] = bMemObj;
+	vetArgs[1] = cMemObj;
+	float *malhaAux2 = new float[tam];
+	int id;
+    // Definir atributos de kernel
+//	openCL.setAttribute(0, bMemObj);
+  //      openCL.setAttribute(1, cMemObj);
+        openCL.setSubdomainBoundary(sub, 2, vetArgs);
+//	openCL.setBalancingTargetID(bMemObj);
+	//openCL.Probing();
+        int rank = openCL.getWorldRank();
+    for (int x = 0; x < 3; x++) {
+		 if (x % 2 == 0) {
+           openCL.setAttribute(0, bMemObj);
+           openCL.setAttribute(1, cMemObj);
+           openCL.setBalancingTargetID(bMemObj);
+           openCL.setSwapBufferID(cMemObj);
 
-//     openCL.setLoadBalancer(sizeof(float), N, 1, 8);
-//     int aMemObj = openCL.AllocateMemoryObject(N * sizeof(float), CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, a);
-//     int bMemObj = openCL.AllocateMemoryObject(N * sizeof(float), CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, b);
-//     int resultMemObj = openCL.AllocateMemoryObject(N * sizeof(float), CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, result);
-    
-//     openCL.setAttribute(0, aMemObj);
-//     openCL.setAttribute(1, bMemObj);
-//     openCL.setAttribute(2, resultMemObj);
-//     openCL.setBalancingTargetID(resultMemObj);
+        }
+	else {
+           openCL.setAttribute(0, cMemObj);
+    	    openCL.setAttribute(1, bMemObj);
+            openCL.setBalancingTargetID(cMemObj);
+            openCL.setSwapBufferID(bMemObj);
 
-//     double inicio = MPI_Wtime();
-//     for (int x = 0; x < 1000; x++) {
-        
-// 		if (x%100 == 0)
-// 			openCL.Probing();
-		
-// 		openCL.ExecuteKernel();    
-       
+       }
 
-//         for (int i = 0; i < N; i++) {
-//             a[i] += 1.0f;
-//             b[i] += 2.0f;
-//         }
+	openCL.ExecuteKernel();
+}
+	openCL.GatherResults(bMemObj, malhaAux);
+	openCL.GatherResults(cMemObj, malhaAux2);
+//	int rank = openCL.getWorldRank();
+	if(rank == 0){
+//	std::cout<<"Malhas finais: "<<std::endl;
+//	std::cout<<"Malha memObj b: "<<std::endl;
+//  	for(int i = 0; i < tam; i++)
+//		std::cout<<"vet["<<i<<"] = "<<malhaAux[i]<<std::endl;
+//	std::cout<<"Malha memObj c: "<<std::endl;
+        for(int i = 0; i < tam; i++)
+                std::cout<<"vet["<<i<<"] = "<<malhaAux[i]<<std::endl;
 
-//         openCL.WriteObject(aMemObj, (char*)a, 0, N*sizeof(float));
-//         openCL.WriteObject(bMemObj, (char*)b, 0, N*sizeof(float));
-//     }
-//     double fim = MPI_Wtime();
-    
-//     openCL.GatherResults(resultMemObj, result);
-    
-//     std::cout<<"Tempo de execução paralela: "<<(fim - inicio)<<std::endl;
-//     double inicio_seq = MPI_Wtime();
-//     for (int i = 0; i < N; i++) {
-//         a[i] = 1.0f;
-//         b[i] = 2.0f;
-//         result2[i] = 0.0f;
-//     }
-    
-//     for (int x = 0; x < 1000; x++) {
-//         for (int i = 0; i < N; i++) {
-//             result2[i] += a[i] + b[i] + 1.0f;	
-//         }
-//         for (int i = 0; i < N; i++) {
-//             a[i] += 1.0f;
-//             b[i] += 2.0f;
-//         }
-//     }
-
-//     double fim_seq = MPI_Wtime();
-
-//     std::cout<<"Tempo de execução sequencial: "<<(fim_seq - inicio_seq)<<std::endl;
-
-//     // for (int i = 0; i < N; i++) {
-//     //     if (result[i] != result2[i]) {
-//     //         std::cout << "Mismatch at index " << i << ": expected " << result2[i] << " but got " << result[i] << std::endl;
-//     //         break;
-//     //     }
-//     // }
-
-//     openCL.FinishParallelProcessor();
-//     delete[] a;
-//     delete[] b;
-//     delete[] result;
-
-//     return 0;
-// }
-
-
-
-// #include "OpenCLWrapper.h"
-// #include <iostream>
-
-// int main(int argc, char **argv) {
-//     // Inicializa o OpenCLWrapper
-//     OpenCLWrapper openCL(argc, argv);
-
-//     // Inicializa os dispositivos OpenCL
-//     openCL.InitDevices("ALL_DEVICES", 10);  
-
-//     // Configura o kernel
-//     openCL.setKernel("kernel.cl", "vectorMulAdd");
-
-//     int N = 2048;
-//     float* a = new float[N];
-//     float* b = new float[N];
-//     float* c = new float[N];  // Vetor C para armazenar os resultados
-//     float* result2 = new float[N];
-
-//     // Inicializa os vetores A, B e C
-//     for (int i = 0; i < N; ++i) {
-//         a[i] = 0.1f ;
-//         b[i] = 0.2f ;
-//         c[i] = 0.0f;  // Inicialmente zero para acumulação
-//     }
-
-//     // Configura o balanceador de carga
-//     openCL.setLoadBalancer(result2, N, 1);
-
-//     // Aloca os objetos de memória
-//     int aMemObj = openCL.AllocateMemoryObject(N * sizeof(float), CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, a);
-//     int bMemObj = openCL.AllocateMemoryObject(N * sizeof(float), CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, b);
-//     int cMemObj = openCL.AllocateMemoryObject(N * sizeof(float), CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, c);
-//     //int nMemObj = openCL.AllocateMemoryObject(sizeof(int), CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, &N);
-
-//     // openCL.WriteObject(nMemobj, (char*)N, 0,sizeof(int));
-//     // Configura os atributos do kernel
-//     openCL.setAttribute(0, aMemObj);
-//     openCL.setAttribute(1, bMemObj);
-//     openCL.setAttribute(2, cMemObj);
-//    // openCL.setAttribute(3, nMemObj); // Passa o tamanho do vetor N como quarto argumento
-
-//     // Executa o kernel
-//     openCL.ExecuteKernel();
-
-//     // Coleta os resultados do vetor C
-//     openCL.GatherResults(cMemObj, c);
-
-//     // Exibe os resultados
-//     for (int i = 0; i < N; ++i) {
-//         std::cout << "c[" << i << "] = " << c[i] << std::endl;
-//     }
-
-//     // Libera a memória
-//     delete[] a;
-//     delete[] b;
-//     delete[] c;
-
-//     return 0;
-// }
-
-
+	double tempoFim = MPI_Wtime();
+	std::cout<<"Tempo execução:"<<tempoFim-tempoInicio<<std::endl;
+	MPI_Barrier(MPI_COMM_WORLD);
+   }
+    delete[] malha;
+    delete[] malhaAux;
+    return 0;
+}
 
