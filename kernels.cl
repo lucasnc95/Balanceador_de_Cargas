@@ -141,7 +141,7 @@ void CalcularPontos(float *celulas, int xPosicaoGlobal, int yPosicaoGlobal, int 
 __kernel void ProcessarPontos(__global float *malhaPrincipalAtual, __global float *malhaPrincipalAnterior, __constant int *parametrosMalhaGPU)
 {
 	int globalThreadID = get_global_id(0);
-	printf("%d \n", globalThreadID);
+	//printf("%d \n", globalThreadID);
 
 	float celulas[CELULAS_SIZEOF];
 

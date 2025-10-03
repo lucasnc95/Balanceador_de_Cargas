@@ -377,84 +377,66 @@ int OpenCLWrapper::CreateMemoryObject(int devicePosition,int size,cl_mem_flags m
 
 
 void OpenCLWrapper::ExecuteKernel() {
-  
- if(!sdSet){
-    for (int count = 0; count < todosDispositivos; count++) {
-        if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength) {
+    if(!sdSet) {
+        printf("erro");
+    } else {
+        MPI_Barrier(MPI_COMM_WORLD);
+     //   printf("\n--- INÍCIO DA ITERAÇÃO %ld ---\n", itCounter);
 
-            
-            
-            int deviceIndex2 = count - meusDispositivosOffset;
-            if (deviceIndex2 >= 0 && deviceIndex2 < todosDispositivos) {
-            
-                kernelEventoDispositivo[deviceIndex2] = RunKernel(deviceIndex2, kernelDispositivo[deviceIndex2], offset[deviceIndex2], length[deviceIndex2], isDeviceCPU(deviceIndex2)? 8 : 64);
-//                SynchronizeCommandQueue(count-meusDispositivosOffset);
-
-            } else {
-                std::cerr << "Invalid device index: " << deviceIndex2 << std::endl;
-            }
-        }
-    }
- 
-}
-
-else {
-    //Computação interna.
-   
-			for(int count = 0; count < todosDispositivos; count++)
-			{
-				if(count >= meusDispositivosOffset && count < meusDispositivosOffset+meusDispositivosLength)
-				{	
-				//	printf("Offset: %i, Length: %i, sdSize: %i, dispositivo: %i e Rank: %i: \n", offset[count]+(sdSize), length[count]-(sdSize)-1, sdSize, count, world_rank);
-					kernelEventoDispositivo[count] = RunKernel(count-meusDispositivosOffset, kernelDispositivo[count], offset[count]+(sdSize), length[count]-(sdSize)/*-1*/, isDeviceCPU(count-meusDispositivosOffset) ? 8 :  64);
-                    			SynchronizeCommandQueue(count-meusDispositivosOffset);
-				}
-			}
+        // 1. Computação dos PONTOS INTERNOS
+        for(int count = 0; count < todosDispositivos; count++) {
+            if(count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength) {
+                int local_idx = count - meusDispositivosOffset;
+                int internal_offset = offset[count] + sdSize;
+                int internal_length = length[count] - 2*sdSize; 
                 
-                Comms();
+                // Print para a computação interna
+              //  printf("[Rank %d] INTERNO:   Dispositivo Global %d (Local %d) | Offset: %d, Length: %d (Índices %d a %d)\n",
+                      // world_rank, count, local_idx, internal_offset, internal_length, internal_offset, internal_offset + internal_length - 1);
 
-            //Sincronizacao da comunicacao.
-			for(int count = 0; count < todosDispositivos; count++)
-			{
-				if(count >= meusDispositivosOffset && count < meusDispositivosOffset+meusDispositivosLength)
-				{
-				    long tickEvent = GetEventTaskTicks(count - meusDispositivosOffset, kernelEventoDispositivo[count]);
-                    		    ticks[count] += tickEvent;
-                    		    SynchronizeCommandQueue(count-meusDispositivosOffset);
-
-				}
-			}
-
-		
-			
-			// Computação das bordas.
-for (int count = 0; count < todosDispositivos; count++) {
-    if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength) {
-      //  printf("Borda 1: Offset: %i, Length: %i sdSize %i, dispositivo %i e Rank: %i: \n", offset[count], sdSize, sdSize, count, world_rank);
-	RunKernel(count - meusDispositivosOffset, kernelDispositivo[count], offset[count], sdSize, isDeviceCPU(count - meusDispositivosOffset) ? 8 : 64);
-	SynchronizeCommandQueue(count-meusDispositivosOffset);
-     //  printf("Borda 2: Offset: %i, Length: %i sdSize %i, dispositivo %i e Rank: %i: \n", offset[count]+ length[count] - (sdSize), sdSize, sdSize, count, world_rank);
-	 RunKernel(count - meusDispositivosOffset, kernelDispositivo[count], offset[count] + length[count] - (sdSize), sdSize, isDeviceCPU(count - meusDispositivosOffset) ? 8 : 64);
-	SynchronizeCommandQueue(count-meusDispositivosOffset);
- 
-    }
-}
-}
-    
-    for (int count = 0; count < todosDispositivos; count++) {
-        if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength) {
-            int deviceIndex2 = count - meusDispositivosOffset;
-            if (deviceIndex2 >= 0 && deviceIndex2 < todosDispositivos) {
-                SynchronizeCommandQueue(deviceIndex2);
-            } else {
-                std::cerr << "Invalid device index: " << deviceIndex2 << std::endl;
+                if (internal_length > 0) {
+                    RunKernel(local_idx, kernelDispositivo[count], internal_offset, internal_length, isDeviceCPU(local_idx) ? 8 : 64);
+                    SynchronizeCommandQueue(local_idx);
+                }
             }
         }
+        
+        // 2. Comunicação das BORDAS (HALO EXCHANGE)
+        MPI_Barrier(MPI_COMM_WORLD);
+      //  printf("--- INICIANDO Comms() ---\n");
+        Comms();
+        MPI_Barrier(MPI_COMM_WORLD);
+      //  printf("--- FINALIZANDO Comms() ---\n");
+
+        // 3. Computação das BORDAS
+        for (int count = 0; count < todosDispositivos; count++) {
+            if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength) {
+                int local_idx = count - meusDispositivosOffset;
+                
+                // Print para a borda esquerda
+             //   printf("[Rank %d] BORDA ESQ: Dispositivo Global %d (Local %d) | Offset: %d, Length: %d (Índice %d)\n",
+                      // world_rank, count, local_idx, offset[count], sdSize, offset[count]);
+                RunKernel(local_idx, kernelDispositivo[count], offset[count], sdSize, isDeviceCPU(local_idx) ? 8 : 64);
+                SynchronizeCommandQueue(local_idx);
+                
+                // Print para a borda direita
+                int right_border_offset = offset[count] + length[count] - sdSize;
+             //   printf("[Rank %d] BORDA DIR: Dispositivo Global %d (Local %d) | Offset: %d, Length: %d (Índice %d)\n",
+                      // world_rank, count, local_idx, right_border_offset, sdSize, right_border_offset);
+                RunKernel(local_idx, kernelDispositivo[count], right_border_offset, sdSize, isDeviceCPU(local_idx) ? 8 : 64);
+                SynchronizeCommandQueue(local_idx);
+            }
+        }
+    	MPI_Barrier(MPI_COMM_WORLD);
+       // printf("--- FIM DA ITERAÇÃO %ld ---\n", itCounter);
     }
     
-   itCounter++;
+    // Sincronização final
+    for (int i = 0; i < meusDispositivosLength; ++i) {
+        SynchronizeCommandQueue(i);
+    }
+    itCounter++;
 }
-
 
 int OpenCLWrapper::RunKernel(int devicePosition,
                              int kernelID,
@@ -1690,933 +1672,86 @@ void OpenCLWrapper::setSubdomainBoundary(int _sdSize, int _nArgs, int* _args) {
 }
 
 
-/*
-void OpenCLWrapper::Comms()
-{
+void OpenCLWrapper::Comms() {
     size_t tamanhoBorda = sdSize;
-    char *recBuff = new char[tamanhoBorda * elementSize * unitsPerElement];
-    char *sendBuff = new char[tamanhoBorda * elementSize * unitsPerElement];
-    int *dataEventoDispositivo = new int[todosDispositivos];
-    MPI_Request sendRequest, receiveRequest;
+    size_t bytes_borda = tamanhoBorda * elementSize * unitsPerElement;
 
-    // Constante para garantir que os passos não gerem tags sobrepostas.
-    // Usar 'todosDispositivos' é uma boa prática pois escala com o problema.
-    const int TAG_MULTIPLIER = todosDispositivos;
+    char *sendBuff = new char[bytes_borda];
+    char *recBuff = new char[bytes_borda];
+    
+    const int TAG_D1_PARA_D2 = 201; // Tag para comunicação ->
+    const int TAG_D2_PARA_D1 = 202; // Tag para comunicação <-
 
-    // Transferencia de bordas, feita em quatro passos.
-    for (int passo = 0; passo < 4; passo++)
-    {
-        for (int count = 0; count < todosDispositivos; count++)
-        {
-            if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength)
-            {
-                // Entre processos diferentes, no quarto passo.
-                if (passo == 3)
-                {
-                    if (count == meusDispositivosOffset && count > 0)
-                    {
-                        int alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, count - 1);
-                        if (alvo % 2 == 0)
-                        {
-                            // TAG ÚNICA: Baseada no passo e no ID do par de comunicação.
-                            int mpi_tag = (passo * TAG_MULTIPLIER) + (count - 1);
-                            
-                            int ID_Device_1 = GetDeviceMemoryObjectID(balancingTargetID, count);
-                            int recHalo = int(offset[count] - (tamanhoBorda));
-                            recHalo = (recHalo < 0) ? 0 : recHalo;
-                            int sendHalo = int(offset[count]);
-                            
-                            MPI_Irecv(recBuff, tamanhoBorda * unitsPerElement * elementSize, MPI_BYTE, alvo, mpi_tag, MPI_COMM_WORLD, &receiveRequest);
-                            dataEventoDispositivo[count] = ReadFromMemoryObject(count - meusDispositivosOffset, ID_Device_1, sendBuff, sendHalo * unitsPerElement * elementSize, tamanhoBorda * unitsPerElement * elementSize);
-                            SynchronizeCommandQueue(count - meusDispositivosOffset);
-                            MPI_Isend(sendBuff, tamanhoBorda * unitsPerElement * elementSize, MPI_BYTE, alvo, mpi_tag, MPI_COMM_WORLD, &sendRequest);
-                            MPI_Wait(&sendRequest, MPI_STATUS_IGNORE);
-                            MPI_Wait(&receiveRequest, MPI_STATUS_IGNORE);
-                            WriteToMemoryObject(count - meusDispositivosOffset, ID_Device_1, recBuff, recHalo * unitsPerElement * elementSize, tamanhoBorda * unitsPerElement * elementSize);
-                            SynchronizeCommandQueue(count - meusDispositivosOffset);
-                        }
-                    }
-                    if (count == meusDispositivosOffset + meusDispositivosLength - 1 && count < todosDispositivos - 1)
-                    {
-                        int alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, count + 1);
-                        if (alvo % 2 == 1)
-                        {
-                            // TAG ÚNICA: Baseada no passo e no ID do par de comunicação.
-                            int mpi_tag = (passo * TAG_MULTIPLIER) + count;
+    // Itera por todas as fronteiras entre dispositivos adjacentes
+    for (int d1_idx = 0; d1_idx < todosDispositivos - 1; ++d1_idx) {
+        int d2_idx = d1_idx + 1;
 
-                            int ID_Device_1 = GetDeviceMemoryObjectID(balancingTargetID, count);
-                            int recHalo = int((offset[count] + length[count]) - (tamanhoBorda));
-                            recHalo = (recHalo < 0) ? 0 : recHalo;
-                            int sendHalo = int((offset[count] + length[count]));
-                            
-                            dataEventoDispositivo[count] = ReadFromMemoryObject(count - meusDispositivosOffset, ID_Device_1, sendBuff, sendHalo * unitsPerElement * elementSize, tamanhoBorda * unitsPerElement * elementSize);
-                            SynchronizeCommandQueue(count - meusDispositivosOffset);
-                            MPI_Isend(sendBuff, tamanhoBorda * unitsPerElement * elementSize, MPI_BYTE, alvo, mpi_tag, MPI_COMM_WORLD, &sendRequest);
-                            MPI_Irecv(recBuff, tamanhoBorda * unitsPerElement * elementSize, MPI_BYTE, alvo, mpi_tag, MPI_COMM_WORLD, &receiveRequest);
-                            MPI_Wait(&sendRequest, MPI_STATUS_IGNORE);
-                            MPI_Wait(&receiveRequest, MPI_STATUS_IGNORE);
-                            WriteToMemoryObject(count - meusDispositivosOffset, ID_Device_1, recBuff, recHalo * unitsPerElement * elementSize, tamanhoBorda * unitsPerElement * elementSize);
-                            SynchronizeCommandQueue(count - meusDispositivosOffset);
-                        }
-                    }
-                }
+        int d1_rank = RecuperarPosicaoHistograma(dispositivosWorld, world_size, d1_idx);
+        int d2_rank = RecuperarPosicaoHistograma(dispositivosWorld, world_size, d2_idx);
 
-                // Entre processos diferentes, no terceiro passo.
-                if (passo == 2)
-                {
-                    if (count == meusDispositivosOffset && count > 0)
-                    {
-                        int alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, count - 1);
-                        if (alvo % 2 == 1)
-                        {
-                            // TAG ÚNICA: Baseada no passo e no ID do par de comunicação.
-                            int mpi_tag = (passo * TAG_MULTIPLIER) + (count - 1);
+        // Offsets de DADOS A SEREM ENVIADOS (as bordas)
+        size_t offset_borda_d1 = (offset[d1_idx] + length[d1_idx] - tamanhoBorda) * unitsPerElement * elementSize;
+        size_t offset_borda_d2 = offset[d2_idx] * unitsPerElement * elementSize;
 
-                            int ID_Device_1 = GetDeviceMemoryObjectID(balancingTargetID, count);
-                            int recHalo = offset[count] - (tamanhoBorda);
-                            recHalo = (recHalo < 0) ? 0 : recHalo;
-                            int sendHalo = offset[count];
+        // Offsets de ONDE ESCREVER OS DADOS RECEBIDOS (os halos)
+        size_t offset_halo_d1 = (offset[d1_idx] + length[d1_idx]) * unitsPerElement * elementSize;
+        size_t offset_halo_d2 = (offset[d2_idx] - tamanhoBorda) * unitsPerElement * elementSize;
 
-                            MPI_Irecv(recBuff, tamanhoBorda * unitsPerElement * elementSize, MPI_BYTE, alvo, mpi_tag, MPI_COMM_WORLD, &receiveRequest);
-                            dataEventoDispositivo[count] = ReadFromMemoryObject(count - meusDispositivosOffset, ID_Device_1, sendBuff, sendHalo * unitsPerElement * elementSize, tamanhoBorda * unitsPerElement * elementSize);
-                            SynchronizeCommandQueue(count - meusDispositivosOffset);
-                            MPI_Isend(sendBuff, tamanhoBorda * unitsPerElement * elementSize, MPI_BYTE, alvo, mpi_tag, MPI_COMM_WORLD, &sendRequest);
-                            MPI_Wait(&sendRequest, MPI_STATUS_IGNORE);
-                            MPI_Wait(&receiveRequest, MPI_STATUS_IGNORE);
-                            WriteToMemoryObject(count - meusDispositivosOffset, ID_Device_1, recBuff, recHalo * unitsPerElement * elementSize, tamanhoBorda * unitsPerElement * elementSize);
-                            SynchronizeCommandQueue(count - meusDispositivosOffset);
-                        }
-                    }
-                    if (count == meusDispositivosOffset + meusDispositivosLength - 1 && count < todosDispositivos - 1)
-                    {
-                        int alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, count + 1);
-                        if (alvo % 2 == 0)
-                        {
-                            // TAG ÚNICA: Baseada no passo e no ID do par de comunicação.
-                            int mpi_tag = (passo * TAG_MULTIPLIER) + count;
+        int ID_Device_d1 = GetDeviceMemoryObjectID(balancingTargetID, d1_idx);
+        int ID_Device_d2 = GetDeviceMemoryObjectID(balancingTargetID, d2_idx);
+        if (enableSwapBuffer){
+        ID_Device_d1 = GetDeviceMemoryObjectID(swapBufferID, d1_idx);
+        ID_Device_d2 = GetDeviceMemoryObjectID(swapBufferID, d2_idx);
 
-                            int ID_Device_1 = GetDeviceMemoryObjectID(balancingTargetID, count);
-                            int recHalo = (offset[count] + length[count]) - (tamanhoBorda);
-                            recHalo = (recHalo < 0) ? 0 : recHalo;
-                            int sendHalo = (offset[count] + length[count]);
+        }
 
-                            dataEventoDispositivo[count] = ReadFromMemoryObject(count - meusDispositivosOffset, ID_Device_1, sendBuff, sendHalo * unitsPerElement * elementSize, tamanhoBorda * unitsPerElement * elementSize);
-                            SynchronizeCommandQueue(count - meusDispositivosOffset);
-                            // CORREÇÃO: Garantindo que o tamanho da mensagem é consistente
-                            MPI_Isend(sendBuff, tamanhoBorda * unitsPerElement * elementSize, MPI_BYTE, alvo, mpi_tag, MPI_COMM_WORLD, &sendRequest);
-                            MPI_Irecv(recBuff, tamanhoBorda * unitsPerElement * elementSize, MPI_BYTE, alvo, mpi_tag, MPI_COMM_WORLD, &receiveRequest);
-                            MPI_Wait(&sendRequest, MPI_STATUS_IGNORE);
-                            MPI_Wait(&receiveRequest, MPI_STATUS_IGNORE);
-                            WriteToMemoryObject(count - meusDispositivosOffset, ID_Device_1, recBuff, recHalo * unitsPerElement * elementSize, tamanhoBorda * unitsPerElement * elementSize);
-                            SynchronizeCommandQueue(count - meusDispositivosOffset);
-                        }
-                    }
-                }
-
-                // No mesmo processo, no primeiro passo (Leitura).
-                if (passo == 0 && count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength - 1)
-                {
-                    int ID_Device_1, ID_Device_2;
-                    if (!enableSwapBuffer)
-                    {
-                        ID_Device_1 = GetDeviceMemoryObjectID(balancingTargetID, count);
-                        ID_Device_2 = GetDeviceMemoryObjectID(balancingTargetID, count + 1);
-                    }
-                    else
-                    {
-                        ID_Device_1 = GetDeviceMemoryObjectID(swapBufferID, count);
-                        ID_Device_2 = GetDeviceMemoryObjectID(swapBufferID, count + 1);
-                    }
-                    int recHalo = int(offset[count + 1] - (tamanhoBorda));
-                    recHalo = (recHalo < 0) ? 0 : recHalo;
-                    int sendHalo = int(offset[count + 1]);
-
-                    dataEventoDispositivo[count + 0] = ReadFromMemoryObject(count - meusDispositivosOffset, ID_Device_1, recBuff, recHalo * unitsPerElement * elementSize, tamanhoBorda * unitsPerElement * elementSize);
-                    SynchronizeCommandQueue(count + 0 - meusDispositivosOffset);
-                    dataEventoDispositivo[count + 1] = ReadFromMemoryObject(count + 1 - meusDispositivosOffset, ID_Device_2, sendBuff, sendHalo * unitsPerElement * elementSize, tamanhoBorda * unitsPerElement * elementSize);
-                    SynchronizeCommandQueue(count + 1 - meusDispositivosOffset);
-                }
-
-                // No mesmo processo, no segundo passo (Escrita).
-                if (passo == 1 && count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength - 1)
-                {
-                    int ID_Device_1, ID_Device_2;
-                    if (!enableSwapBuffer)
-                    {
-                        ID_Device_1 = GetDeviceMemoryObjectID(balancingTargetID, count);
-                        ID_Device_2 = GetDeviceMemoryObjectID(balancingTargetID, count + 1);
-                    }
-                    else
-                    {
-                        ID_Device_1 = GetDeviceMemoryObjectID(swapBufferID, count);
-                        ID_Device_2 = GetDeviceMemoryObjectID(swapBufferID, count + 1);
-                    }
-                    int recHalo = offset[count + 1] - (tamanhoBorda);
-                    recHalo = (recHalo < 0) ? 0 : recHalo;
-                    int sendHalo = offset[count + 1];
-                    
-                    WriteToMemoryObject(count + 0 - meusDispositivosOffset, ID_Device_1, sendBuff, sendHalo * unitsPerElement * elementSize, tamanhoBorda * unitsPerElement * elementSize);
-                    SynchronizeCommandQueue(count + 0 - meusDispositivosOffset);
-                    WriteToMemoryObject(count + 1 - meusDispositivosOffset, ID_Device_2, recBuff, recHalo * unitsPerElement * elementSize, tamanhoBorda * unitsPerElement * elementSize);
-                    SynchronizeCommandQueue(count + 1 - meusDispositivosOffset);
-                }
+        // CASO 1: Comunicação INTER-PROCESSO (entre ranks diferentes)
+        if (d1_rank != d2_rank) {
+            MPI_Request req_s, req_r;
+            // Lógica para o Rank que controla d1
+            if (world_rank == d1_rank) {
+                int d1_local_idx = d1_idx - meusDispositivosOffset;
+                ReadFromMemoryObject(d1_local_idx, ID_Device_d1, sendBuff, offset_borda_d1, bytes_borda);
+                SynchronizeCommandQueue(d1_local_idx);
+                MPI_Isend(sendBuff, bytes_borda, MPI_BYTE, d2_rank, TAG_D1_PARA_D2, MPI_COMM_WORLD, &req_s);
+                MPI_Irecv(recBuff, bytes_borda, MPI_BYTE, d2_rank, TAG_D2_PARA_D1, MPI_COMM_WORLD, &req_r);
+                MPI_Wait(&req_s, MPI_STATUS_IGNORE);
+                MPI_Wait(&req_r, MPI_STATUS_IGNORE);
+                WriteToMemoryObject(d1_local_idx, ID_Device_d1, recBuff, offset_halo_d1, bytes_borda);
+                SynchronizeCommandQueue(d1_local_idx);
+            }
+            // Lógica para o Rank que controla d2
+            else if (world_rank == d2_rank) {
+                int d2_local_idx = d2_idx - meusDispositivosOffset;
+                ReadFromMemoryObject(d2_local_idx, ID_Device_d2, sendBuff, offset_borda_d2, bytes_borda);
+                SynchronizeCommandQueue(d2_local_idx);
+                MPI_Isend(sendBuff, bytes_borda, MPI_BYTE, d1_rank, TAG_D2_PARA_D1, MPI_COMM_WORLD, &req_s);
+                MPI_Irecv(recBuff, bytes_borda, MPI_BYTE, d1_rank, TAG_D1_PARA_D2, MPI_COMM_WORLD, &req_r);
+                MPI_Wait(&req_s, MPI_STATUS_IGNORE);
+                MPI_Wait(&req_r, MPI_STATUS_IGNORE);
+                WriteToMemoryObject(d2_local_idx, ID_Device_d2, recBuff, offset_halo_d2, bytes_borda);
+                SynchronizeCommandQueue(d2_local_idx);
             }
         }
+        // CASO 2: Comunicação INTRA-PROCESSO (dispositivos no mesmo rank)
+        else if (world_rank == d1_rank) {
+            int d1_local_idx = d1_idx - meusDispositivosOffset;
+            int d2_local_idx = d2_idx - meusDispositivosOffset;
+            ReadFromMemoryObject(d1_local_idx, ID_Device_d1, sendBuff, offset_borda_d1, bytes_borda);
+            ReadFromMemoryObject(d2_local_idx, ID_Device_d2, recBuff, offset_borda_d2, bytes_borda);
+            SynchronizeCommandQueue(d1_local_idx);
+            SynchronizeCommandQueue(d2_local_idx);
+            WriteToMemoryObject(d1_local_idx, ID_Device_d1, recBuff, offset_halo_d1, bytes_borda);
+            WriteToMemoryObject(d2_local_idx, ID_Device_d2, sendBuff, offset_halo_d2, bytes_borda);
+            SynchronizeCommandQueue(d1_local_idx);
+            SynchronizeCommandQueue(d2_local_idx);
+        }
     }
-
     delete[] sendBuff;
     delete[] recBuff;
-    delete[] dataEventoDispositivo;
 }
 
 
-
-
-
-
-
-*/
-
-
-
-void OpenCLWrapper::Comms(){
-size_t tamanhoBorda = sdSize;
-char *recBuff = new char[tamanhoBorda * elementSize * unitsPerElement];
-char *sendBuff = new char[tamanhoBorda * elementSize * unitsPerElement];
-int *dataEventoDispositivo = new int[todosDispositivos];
-MPI_Request sendRequest, receiveRequest;
-//Transferencia de bordas, feita em quatro passos.
-			for(int passo = 0; passo < 4; passo++)
-			{
-				for(int count = 0; count < todosDispositivos; count++)
-				{
-					if(count >= meusDispositivosOffset && count < meusDispositivosOffset+meusDispositivosLength)
-					{
-
-						//Entre processos diferentes, no quarto passo.
-						if(passo == 3)
-						{
-							if(count == meusDispositivosOffset && count > 0)
-							{
-
-								int ID_Device_1 = GetDeviceMemoryObjectID(balancingTargetID, count);
-								int recHalo = int(offset[count]-(tamanhoBorda));
-								recHalo = (recHalo < 0) ? 0 : recHalo;
-								int sendHalo = int(offset[count]);
-								int alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, count-1);
-
-								if(alvo%2 == 0)
-								{
-									MPI_Irecv(recBuff, tamanhoBorda*unitsPerElement*elementSize, MPI_BYTE, alvo, 0, MPI_COMM_WORLD, &receiveRequest);
-
-									dataEventoDispositivo[count] = ReadFromMemoryObject(count-meusDispositivosOffset, ID_Device_1, sendBuff, sendHalo*unitsPerElement*elementSize, tamanhoBorda*unitsPerElement*elementSize);
-									SynchronizeCommandQueue(count-meusDispositivosOffset);
-									MPI_Isend(recBuff, tamanhoBorda*unitsPerElement*elementSize, MPI_BYTE, alvo, 0, MPI_COMM_WORLD, &sendRequest);
-									MPI_Wait(&sendRequest, MPI_STATUS_IGNORE);
-									MPI_Wait(&receiveRequest, MPI_STATUS_IGNORE);
-
-									WriteToMemoryObject(count-meusDispositivosOffset, ID_Device_1, recBuff, recHalo*unitsPerElement*elementSize, tamanhoBorda*unitsPerElement*elementSize);
-									SynchronizeCommandQueue(count-meusDispositivosOffset);
-
-								}
-							}
-							if(count == meusDispositivosOffset+meusDispositivosLength-1 && count < todosDispositivos-1)
-							{
-								int ID_Device_1= GetDeviceMemoryObjectID(balancingTargetID, count);
-								int recHalo = int((offset[count]+length[count])-(tamanhoBorda));
-								recHalo = (recHalo < 0) ? 0 : recHalo;
-								int sendHalo = int((offset[count]+length[count]));
-								int alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, count+1);
-
-								if(alvo%2 == 1)
-								{
-									dataEventoDispositivo[count] = ReadFromMemoryObject(count-meusDispositivosOffset, ID_Device_1, sendBuff, sendHalo*unitsPerElement*elementSize, tamanhoBorda*unitsPerElement*elementSize);
-									SynchronizeCommandQueue(count-meusDispositivosOffset);
-									MPI_Isend(sendBuff, tamanhoBorda*unitsPerElement*elementSize, MPI_BYTE, alvo, 0, MPI_COMM_WORLD, &sendRequest);
-									MPI_Irecv(recBuff, tamanhoBorda*unitsPerElement*elementSize, MPI_BYTE, alvo, 0, MPI_COMM_WORLD, &receiveRequest);
-									MPI_Wait(&sendRequest, MPI_STATUS_IGNORE);
-									MPI_Wait(&receiveRequest, MPI_STATUS_IGNORE);
-									WriteToMemoryObject(count-meusDispositivosOffset, ID_Device_1, recBuff, recHalo*unitsPerElement*elementSize, tamanhoBorda*unitsPerElement*elementSize);
-									SynchronizeCommandQueue(count-meusDispositivosOffset);
-
-								}
-							}
-						}
-
-						//Entre processos diferentes, no terceiro passo.
-						if(passo == 2)
-						{
-							if(count == meusDispositivosOffset && count > 0)
-							{
-								int ID_Device_1 = GetDeviceMemoryObjectID(balancingTargetID, count);
-								int recHalo = offset[count]-(tamanhoBorda);
-								recHalo = (recHalo < 0) ? 0 : recHalo;
-								int sendHalo = offset[count];
-								int alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, count-1);
-
-								if(alvo%2 == 1)
-								{
-									MPI_Irecv(recBuff, tamanhoBorda*unitsPerElement*elementSize, MPI_BYTE , alvo, 0, MPI_COMM_WORLD, &receiveRequest);
-
-									dataEventoDispositivo[count] = ReadFromMemoryObject(count-meusDispositivosOffset, ID_Device_1, sendBuff, sendHalo*unitsPerElement*elementSize, tamanhoBorda*unitsPerElement*elementSize);
-									SynchronizeCommandQueue(count-meusDispositivosOffset);
-									MPI_Isend(sendBuff, tamanhoBorda*unitsPerElement*elementSize, MPI_BYTE, alvo, 0, MPI_COMM_WORLD, &sendRequest);
-									MPI_Wait(&sendRequest, MPI_STATUS_IGNORE);
-									MPI_Wait(&receiveRequest, MPI_STATUS_IGNORE);
-
-									WriteToMemoryObject(count-meusDispositivosOffset, ID_Device_1, recBuff, recHalo*unitsPerElement*elementSize, tamanhoBorda*unitsPerElement*elementSize);
-									SynchronizeCommandQueue(count-meusDispositivosOffset);
-
-								}
-							}
-							if(count == meusDispositivosOffset+meusDispositivosLength-1 && count < todosDispositivos-1)
-							{
-								int ID_Device_1 = GetDeviceMemoryObjectID(balancingTargetID, count);
-								int recHalo = (offset[count]+length[count])-(tamanhoBorda);
-								recHalo = (recHalo < 0) ? 0 : recHalo;
-								int sendHalo = (offset[count]+length[count]);
-								int alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, count+1);
-
-								if(alvo%2 == 0)
-								{
-									dataEventoDispositivo[count] = ReadFromMemoryObject(count-meusDispositivosOffset, ID_Device_1, sendBuff, sendHalo*unitsPerElement*elementSize, tamanhoBorda*unitsPerElement*elementSize);
-									SynchronizeCommandQueue(count-meusDispositivosOffset);
-									MPI_Isend(sendBuff, tamanhoBorda*unitsPerElement, MPI_BYTE, alvo, 0, MPI_COMM_WORLD, &sendRequest);
-									MPI_Irecv(recBuff, tamanhoBorda*unitsPerElement, MPI_BYTE, alvo, 0, MPI_COMM_WORLD, &receiveRequest);
-									MPI_Wait(&sendRequest, MPI_STATUS_IGNORE);
-									MPI_Wait(&receiveRequest, MPI_STATUS_IGNORE);
-
-									WriteToMemoryObject(count-meusDispositivosOffset, ID_Device_1, recBuff, recHalo*unitsPerElement*elementSize, tamanhoBorda*unitsPerElement*elementSize);
-									SynchronizeCommandQueue(count-meusDispositivosOffset);
-
-								}
-							}
-						}
-
-						//No mesmo processo, no primeiro passo.
-						if(passo == 0 && count >= meusDispositivosOffset && count < meusDispositivosOffset+meusDispositivosLength-1)
-						{
-						int ID_Device_1, ID_Device_2;
-						  if(!enableSwapBuffer)
-                           			 {
-                         			    ID_Device_1 = GetDeviceMemoryObjectID(balancingTargetID, count);
-					            ID_Device_2 = GetDeviceMemoryObjectID(balancingTargetID, count+1);
-                            			 }
-                            			else
-                            			{
-                            				ID_Device_1 = GetDeviceMemoryObjectID(swapBufferID, count);
-							ID_Device_2 = GetDeviceMemoryObjectID(swapBufferID, count+1);
-                            			}
-							int recHalo = int(offset[count+1]-(tamanhoBorda));
-							recHalo = (recHalo < 0) ? 0 : recHalo;
-							int sendHalo = int(offset[count+1]);
-
-							dataEventoDispositivo[count+0] = ReadFromMemoryObject(count-meusDispositivosOffset, ID_Device_1, recBuff, recHalo*unitsPerElement*elementSize, tamanhoBorda*unitsPerElement*elementSize);
-							SynchronizeCommandQueue(count+0-meusDispositivosOffset);
-
-							dataEventoDispositivo[count+1] = ReadFromMemoryObject(count+1-meusDispositivosOffset, ID_Device_2, sendBuff, sendHalo*unitsPerElement*elementSize, tamanhoBorda*unitsPerElement*elementSize);
-							SynchronizeCommandQueue(count+1-meusDispositivosOffset);
-
-
-						}
-
-						//No mesmo processo, no segundo passo.
-					if(passo == 1 && count >= meusDispositivosOffset && count < meusDispositivosOffset+meusDispositivosLength-1)
-							{
-							int ID_Device_1, ID_Device_2;
-                        		if(!enableSwapBuffer)
-                            				{
-                           				ID_Device_1 = GetDeviceMemoryObjectID(balancingTargetID, count);
-							ID_Device_2 = GetDeviceMemoryObjectID(balancingTargetID, count+1);
-                           			 	}
-                            		else
-                           		 		{
-                           				ID_Device_1 = GetDeviceMemoryObjectID(swapBufferID, count);
-							ID_Device_2 = GetDeviceMemoryObjectID(swapBufferID, count+1);
-                           				 }
-							int recHalo = offset[count+1]-(tamanhoBorda);
-							recHalo = (recHalo < 0) ? 0 : recHalo;
-							int sendHalo = offset[count+1];
-
-
-							WriteToMemoryObject(count+0-meusDispositivosOffset, ID_Device_1, sendBuff, sendHalo*unitsPerElement*elementSize, tamanhoBorda*unitsPerElement*elementSize);
-							SynchronizeCommandQueue(count+0-meusDispositivosOffset);
-
-							WriteToMemoryObject(count+1-meusDispositivosOffset, ID_Device_2, recBuff, recHalo*unitsPerElement*elementSize, tamanhoBorda*unitsPerElement*elementSize);
-							SynchronizeCommandQueue(count+1-meusDispositivosOffset);
-
-
-						}
-					}
-				}
-			}
-
-delete[] sendBuff;
-delete[] recBuff;
-delete[] dataEventoDispositivo;
-
-}
-
-
-
-
-
-
-
-
-
-
-/*
-
-void OpenCLWrapper::Comms(){
-int tamanhoBorda = sdSize;
-//char *malha = new char[nElements * elementSize * unitsPerElement];
-int *dataEventoDispositivo = new int[todosDispositivos];
-char* sendBuffer = new char[tamanhoBorda*unitsPerElement*elementSize];
-char* receiveBuffer = new char[tamanhoBorda*unitsPerElement*elementSize];
-MPI_Request sendRequest, receiveRequest;
-
-//Transferencia de bordas, feita em quatro passos.
-
-			for(int passo = 0; passo < 4; passo++)
-			{
-				for(int count = 0; count < todosDispositivos; count++)
-				{
-					if(count >= meusDispositivosOffset && count < meusDispositivosOffset+meusDispositivosLength)
-					{
-					//Entre processos diferentes, no quarto passo.
-						if(passo == 3)  // Borda esquerda entre processos
-						{
-							if(count == meusDispositivosOffset && count > 0) // 
-							{
-                                			int ID_device_1;
-							int ID_device_2;
-                                		//	if(!enableSwapBuffer)
-                                		//	{
-                                			ID_device_1 = GetDeviceMemoryObjectID(balancingTargetID, count);
-                                		//	}
-                                		//	else
-                                		//	{
-                                			ID_device_2 = GetDeviceMemoryObjectID(swapBufferID, count);
-                                		//	}
-								int borda_1 = int(offset[count]-(tamanhoBorda)); // Borda de recebimento
-								borda_1 = (borda_1 < 0) ? 0 : borda_1;
-								int borda_2 = int(offset[count]); // borda de envio
-								int alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, count-1);
-
-								if(alvo%2 == 0)
-								{
-
-                                                                      //float *ptr = reinterpret_cast<float*>();
-								//	printf("If alvo par Processo: %d passo %d Dispositivo %d (ID: %d) Antes do receive: b[%d] = %f \n", world_rank, passo,count,ID_device_1, borda_1, ptr[borda_1]);
-								//	fflush(stdout);
-									MPI_Irecv(receiveBuffer, tamanhoBorda*unitsPerElement*elementSize, MPI_BYTE, alvo, 0, MPI_COMM_WORLD, &receiveRequest);
-									dataEventoDispositivo[count] = ReadFromMemoryObject(count-meusDispositivosOffset, ID_device_1, sendBuffer, borda_2*unitsPerElement*elementSize, tamanhoBorda*unitsPerElement*elementSize);
-									SynchronizeCommandQueue(count-meusDispositivosOffset);
-								//	printf("If alvo par Processo: %d passo %d Dispositivo %d (ID: %d) Antes  do send: b[%d] = %f \n", world_rank, passo, count, ID_device_1, borda_2, ptr[borda_2]);
-									MPI_Isend(sendBuffer, tamanhoBorda*unitsPerElement*elementSize, MPI_BYTE, alvo, 0, MPI_COMM_WORLD, &sendRequest);
-									MPI_Wait(&sendRequest, MPI_STATUS_IGNORE);
-									MPI_Wait(&receiveRequest, MPI_STATUS_IGNORE);
-                                                                  //    printf("If alvo par Processo: %d passo %d  Dispositivo %d (ID: %d) Depois  do receive: b[%d] = %f \n", world_rank, passo, count,ID_device_1, borda_1, ptr[borda_1]);
-								//	fflush(stdout);
-
-									WriteToMemoryObject(count-meusDispositivosOffset, ID_device_1, receiveBuffer, borda_1*unitsPerElement*elementSize, tamanhoBorda*unitsPerElement*elementSize);
-                                                                        SynchronizeCommandQueue(count-meusDispositivosOffset);                                                                        
-									WriteToMemoryObject(count-meusDispositivosOffset, ID_device_2, receiveBuffer, borda_1*unitsPerElement*elementSize, tamanhoBorda*unitsPerElement*elementSize);									
-									SynchronizeCommandQueue(count-meusDispositivosOffset);
-									}
-									}
-
-
-
-				if(count == meusDispositivosOffset+meusDispositivosLength-1 && count < todosDispositivos-1) // Se último dispositivo de um processo que não é o último:
-									{
-                                					int ID_device_1;
-                                					int ID_device_2;
-                                				//	if(!enableSwapBuffer)
-                                				//	{
-                                					ID_device_1 = GetDeviceMemoryObjectID(balancingTargetID, count);
-                                				//	}
-                                				//	else
-                                				//	{
-                                					ID_device_2 = GetDeviceMemoryObjectID(swapBufferID, count);
-                                				//	}
-									int borda_1 = int((offset[count]+length[count])-(tamanhoBorda)); // borda de recebimento
-									borda_1 = (borda_1 < 0) ? 0 : borda_1;
-									int borda_2 = int((offset[count]+length[count])); // borda envio
-									int alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, count+1);
-	
-
-									if(alvo%2 == 1)
-									{
-                        //                                              float *ptr = reinterpret_cast<float*>(malha);
-                          //                                            printf("Processo: %d passo %d Dispositivo %d (ID: %d)  Antes do receive: b[%d] = %f \n", world_rank, passo, count, ID_device_1, borda_1, ptr[borda_1]);
-                            //                                          fflush(stdout);
-									dataEventoDispositivo[count] = ReadFromMemoryObject(count-meusDispositivosOffset, ID_device_1, sendBuffer, borda_2*unitsPerElement*elementSize, tamanhoBorda*unitsPerElement*elementSize);
-									SynchronizeCommandQueue(count-meusDispositivosOffset);
-                              //                                        printf("Processo: %d passo %d Dispositivo %d (ID: %d) Antes do send: b[%d] = %f \n", world_rank, passo, count, ID_device_1, borda_2, ptr[borda_2]);
-									MPI_Isend(sendBuffer, tamanhoBorda*unitsPerElement*elementSize, MPI_BYTE, alvo, 0, MPI_COMM_WORLD, &sendRequest);
-									MPI_Irecv(receiveBuffer, tamanhoBorda*unitsPerElement*elementSize, MPI_BYTE, alvo, 0, MPI_COMM_WORLD, &receiveRequest);
-									MPI_Wait(&sendRequest, MPI_STATUS_IGNORE);
-									MPI_Wait(&receiveRequest, MPI_STATUS_IGNORE);
-                                //                                      printf("Processo: %d passo %d Dispositivo %d (ID: %d) Depois do receive: b[%d] = %f \n", world_rank, passo, count,ID_device_1, borda_1, ptr[borda_1]);
-                                  //                                    fflush(stdout);
-									WriteToMemoryObject(count-meusDispositivosOffset, ID_device_1, receiveBuffer, borda_1*unitsPerElement*elementSize, tamanhoBorda*unitsPerElement*elementSize);
-                                                                        SynchronizeCommandQueue(count-meusDispositivosOffset); 
-									WriteToMemoryObject(count-meusDispositivosOffset, ID_device_2, receiveBuffer, borda_1*unitsPerElement*elementSize, tamanhoBorda*unitsPerElement*elementSize);
-									SynchronizeCommandQueue(count-meusDispositivosOffset);
-									}
-								}
-							}
-
-						//Entre processos diferentes, no terceiro passo.
-			if(passo == 2)
-					{
-						if(count == meusDispositivosOffset && count > 0) // Se é o primeiro dispositivo do processo e não é o primeiro processo
-						{
-                                					int ID_device_1;
-                                					int ID_device_2;
-                                			//		if(!enableSwapBuffer)
-                                			//		{
-                                					ID_device_1 = GetDeviceMemoryObjectID(balancingTargetID, count);
-                                			//		ID_device_2 = GetDeviceMemoryObjectID(balancingTargetID, count+1);
-                                			//		}
-                                			//		else
-                                			//		{
-                                			//		ID_device_1 = GetDeviceMemoryObjectID(swapBufferID, count);
-                                					ID_device_2 = GetDeviceMemoryObjectID(swapBufferID, count);
-                                			//		}
-									int borda_1 = offset[count]-(tamanhoBorda); //borda recebimento
-									borda_1 = (borda_1 < 0) ? 0 : borda_1;
-									int borda_2 = offset[count]; // borda envio
-									int alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, count-1);
-
-
-						if(alvo%2 == 1)
-						{
-									MPI_Irecv(receiveBuffer, tamanhoBorda*unitsPerElement*elementSize, MPI_BYTE , alvo, 0, MPI_COMM_WORLD, &receiveRequest);
-									dataEventoDispositivo[count] = ReadFromMemoryObject(count-meusDispositivosOffset, ID_device_1, sendBuffer, borda_2*unitsPerElement*elementSize, tamanhoBorda*unitsPerElement*elementSize);
-									SynchronizeCommandQueue(count-meusDispositivosOffset);
-									MPI_Isend(sendBuffer, tamanhoBorda*unitsPerElement*elementSize, MPI_BYTE, alvo, 0, MPI_COMM_WORLD, &sendRequest);
-									MPI_Wait(&sendRequest, MPI_STATUS_IGNORE);
-									MPI_Wait(&receiveRequest, MPI_STATUS_IGNORE);
-									WriteToMemoryObject(count-meusDispositivosOffset, ID_device_1, receiveBuffer, borda_1*unitsPerElement*elementSize, tamanhoBorda*unitsPerElement*elementSize);
-                                                                        SynchronizeCommandQueue(count-meusDispositivosOffset); 
-									WriteToMemoryObject(count-meusDispositivosOffset, ID_device_2, receiveBuffer, borda_1*unitsPerElement*elementSize, tamanhoBorda*unitsPerElement*elementSize);									
-									SynchronizeCommandQueue(count-meusDispositivosOffset);
-                                    				
-
-
-									}
-									}
-
-
-				if(count == meusDispositivosOffset+meusDispositivosLength-1 && count < todosDispositivos-1) // se é o último dispositivo de um processo que não é o último
-									{
-
-                					                int ID_device_1;
-                               						int ID_device_2;
-                                				//	if(!enableSwapBuffer)
-                                				//	{
-                                					ID_device_1 = GetDeviceMemoryObjectID(balancingTargetID, count);
-                                				//	ID_device_2 = GetDeviceMemoryObjectID(balancingTargetID, count+1);
-                                				//	}
-                                				//	else
-                                				//	{
-                                					ID_device_2 = GetDeviceMemoryObjectID(swapBufferID, count);
-                                				//	ID_device_2 = GetDeviceMemoryObjectID(swapBufferID, count+1);
-                                				//	}
-									int borda_1 = (offset[count]+length[count])-(tamanhoBorda);
-									borda_1 = (borda_1 < 0) ? 0 : borda_1;
-									int borda_2 = (offset[count]+length[count]);
-									int alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, count+1);
-
-
-								if(alvo%2 == 0)
-								{
-									dataEventoDispositivo[count] = ReadFromMemoryObject(count-meusDispositivosOffset, ID_device_1, sendBuffer, borda_2*unitsPerElement*elementSize, tamanhoBorda*unitsPerElement*elementSize);
-									SynchronizeCommandQueue(count-meusDispositivosOffset);
-									MPI_Isend(sendBuffer, tamanhoBorda*unitsPerElement*elementSize, MPI_BYTE, alvo, 0, MPI_COMM_WORLD, &sendRequest);
-									MPI_Irecv(receiveBuffer, tamanhoBorda*unitsPerElement*elementSize, MPI_BYTE, alvo, 0, MPI_COMM_WORLD, &receiveRequest);
-									MPI_Wait(&sendRequest, MPI_STATUS_IGNORE);
-									MPI_Wait(&receiveRequest, MPI_STATUS_IGNORE);
-
-									WriteToMemoryObject(count-meusDispositivosOffset, ID_device_1, receiveBuffer, borda_1*unitsPerElement*elementSize, tamanhoBorda*unitsPerElement*elementSize);
-                                                                        SynchronizeCommandQueue(count-meusDispositivosOffset);
-									WriteToMemoryObject(count-meusDispositivosOffset, ID_device_2, receiveBuffer, borda_1*unitsPerElement*elementSize, tamanhoBorda*unitsPerElement*elementSize);									
-									SynchronizeCommandQueue(count-meusDispositivosOffset);
-
-
-
-								}
-							}
-						}
-
-						//No mesmo processo, no primeiro passo.
-						if(passo == 0 && count >= meusDispositivosOffset && count < meusDispositivosOffset+meusDispositivosLength-1)
-						{
-                            						int ID_device_1;
-                            						int ID_device_2;
-                            						if(!enableSwapBuffer)
-                            						{	
-                            						ID_device_1 = GetDeviceMemoryObjectID(balancingTargetID, count);
-                            						ID_device_2 = GetDeviceMemoryObjectID(balancingTargetID, count+1);
-                            						}
-                            						else
-                            						{
-                            						ID_device_1 = GetDeviceMemoryObjectID(swapBufferID, count);
-                            						ID_device_2 = GetDeviceMemoryObjectID(swapBufferID, count+1);
-                            						}
-									int borda_1 = int(offset[count+1]-(tamanhoBorda));
-									borda_1 = (borda_1 < 0) ? 0 : borda_1;
-									int borda_2 = int(offset[count+1]);
-                                                                        
-									dataEventoDispositivo[count+0] = ReadFromMemoryObject(count-meusDispositivosOffset, ID_device_1, sendBuffer, borda_1*unitsPerElement*elementSize, tamanhoBorda*unitsPerElement*elementSize);
-									SynchronizeCommandQueue(count+0-meusDispositivosOffset);
-									dataEventoDispositivo[count+1] = ReadFromMemoryObject(count+1-meusDispositivosOffset, ID_device_2, sendBuffer, borda_2*unitsPerElement*elementSize, tamanhoBorda*unitsPerElement*elementSize);
-									SynchronizeCommandQueue(count+1-meusDispositivosOffset);
-
-
-
- 
-						}
-
-						//No mesmo processo, no segundo passo.
-						if(passo == 1 && count >= meusDispositivosOffset && count < meusDispositivosOffset+meusDispositivosLength-1)
-						{
-                                                        int ID_device_1;
-                                                        int ID_device_2;
-                                                if(!enableSwapBuffer)
-                                                {
-                            				ID_device_1 = GetDeviceMemoryObjectID(balancingTargetID, count);
-							ID_device_2 = GetDeviceMemoryObjectID(balancingTargetID, count+1);
-                                                }
-                                                else
-                                                {
-                            				ID_device_1 = GetDeviceMemoryObjectID(swapBufferID, count);
-							ID_device_2 = GetDeviceMemoryObjectID(swapBufferID, count+1);
-                                                }
-							int borda_1 = offset[count+1]-(tamanhoBorda);
-							borda_1 = (borda_1 < 0) ? 0 : borda_1;
-							int borda_2 = offset[count+1];
-                         
-
-							WriteToMemoryObject(count+0-meusDispositivosOffset, ID_device_1, sendBuffer, borda_2*unitsPerElement*elementSize, tamanhoBorda*unitsPerElement*elementSize);
-							SynchronizeCommandQueue(count+0-meusDispositivosOffset);
-
-							WriteToMemoryObject(count+1-meusDispositivosOffset, ID_device_2, sendBuffer, borda_1*unitsPerElement*elementSize, tamanhoBorda*unitsPerElement*elementSize);
-							SynchronizeCommandQueue(count+1-meusDispositivosOffset);
-
-
-						}
-					}
-				}
-			}
-
-delete[] sendBuffer;
-delete[] receiveBuffer;
-}
-
-
-*/
-
-
-
-
-/*
-void OpenCLWrapper::Comms() {
-    size_t tamanhoBorda = sdSize;
-    float *malha = new float[nElements * unitsPerElement];
-    int *malhaDevice = new int[2];
-    int *borda = new int[2];
-    int alvo;
-    int *dataEventoDispositivo = new int[todosDispositivos];
-    MPI_Request sendRequest, receiveRequest;
-
-    for (int passo = 0; passo < 4; passo++) {
-        for (int count = 0; count < todosDispositivos; count++) {
-            if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength) {
-
-                if (passo == 0 && count < meusDispositivosOffset + meusDispositivosLength - 1) {
-                    malhaDevice[0] = GetDeviceMemoryObjectID(enableSwapBuffer ? swapBufferID : balancingTargetID, count);
-                    malhaDevice[1] = GetDeviceMemoryObjectID(enableSwapBuffer ? swapBufferID : balancingTargetID, count + 1);
-
-                    borda[0] = std::max(int(offset[count + 1] - tamanhoBorda), 0);
-                    borda[1] = int(offset[count + 1]);
-
-                    dataEventoDispositivo[count] = ReadFromMemoryObject(count - meusDispositivosOffset, malhaDevice[0],(char*) malha + (borda[0] * unitsPerElement), borda[0] * unitsPerElement * sizeof(float), tamanhoBorda * unitsPerElement * sizeof(float));
-                    SynchronizeCommandQueue(count - meusDispositivosOffset);
-
-                    dataEventoDispositivo[count + 1] = ReadFromMemoryObject(count + 1 - meusDispositivosOffset, malhaDevice[1],(char*) malha + (borda[1] * unitsPerElement), borda[1] * unitsPerElement * sizeof(float), tamanhoBorda * unitsPerElement * sizeof(float));
-                    SynchronizeCommandQueue(count + 1 - meusDispositivosOffset);
-
-                    printf("[Rank %d] (Passo 0) Dados lidos localmente entre dispositivos %d e %d:\n", world_rank, count, count + 1);
-                    for (size_t i = 0; i < tamanhoBorda * unitsPerElement; ++i) {
-                        printf("%.2f ", malha[borda[0] * unitsPerElement + i]);
-                    }
-                    printf("<-> ");
-                    for (size_t i = 0; i < tamanhoBorda * unitsPerElement; ++i) {
-                        printf("%.2f ", malha[borda[1] * unitsPerElement + i]);
-                    }
-                    printf("\n");
-                }
-
-                if (passo == 1 && count < meusDispositivosOffset + meusDispositivosLength - 1) {
-                    malhaDevice[0] = GetDeviceMemoryObjectID(enableSwapBuffer ? swapBufferID : balancingTargetID, count);
-                    malhaDevice[1] = GetDeviceMemoryObjectID(enableSwapBuffer ? swapBufferID : balancingTargetID, count + 1);
-
-                    borda[0] = std::max(int(offset[count + 1] - tamanhoBorda), 0);
-                    borda[1] = int(offset[count + 1]);
-
-                    WriteToMemoryObject(count - meusDispositivosOffset, malhaDevice[0], (char*)malha + (borda[1] * unitsPerElement), borda[1] * unitsPerElement * sizeof(float), tamanhoBorda * unitsPerElement * sizeof(float));
-                    SynchronizeCommandQueue(count - meusDispositivosOffset);
-
-                    WriteToMemoryObject(count + 1 - meusDispositivosOffset, malhaDevice[1], (char*)malha + (borda[0] * unitsPerElement), borda[0] * unitsPerElement * sizeof(float), tamanhoBorda * unitsPerElement * sizeof(float));
-                    SynchronizeCommandQueue(count + 1 - meusDispositivosOffset);
-
-                    printf("[Rank %d] (Passo 1) Dados escritos localmente entre dispositivos %d e %d:\n", world_rank, count, count + 1);
-                    for (size_t i = 0; i < tamanhoBorda * unitsPerElement; ++i) {
-                        printf("%.2f ", malha[borda[1] * unitsPerElement + i]);
-                    }
-                    printf("-> ");
-                    for (size_t i = 0; i < tamanhoBorda * unitsPerElement; ++i) {
-                        printf("%.2f ", malha[borda[0] * unitsPerElement + i]);
-                    }
-                    printf("\n");
-                }
-
-                if (!enableSwapBuffer) {
-                    malhaDevice[0] = GetDeviceMemoryObjectID(balancingTargetID, count);
-                } else {
-                    malhaDevice[0] = GetDeviceMemoryObjectID(swapBufferID, count);
-                }
-
-                borda[0] = std::max(int(offset[count] - tamanhoBorda), 0);
-                borda[1] = int(offset[count]);
-                alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, count - 1);
-
-                if ((passo == 2 && count == meusDispositivosOffset && count > 0 && alvo % 2 == 1) ||
-                    (passo == 3 && count == meusDispositivosOffset && count > 0 && alvo % 2 == 0)) {
-
-                    MPI_Irecv(malha + (borda[0] * unitsPerElement), tamanhoBorda * unitsPerElement, MPI_FLOAT, alvo, 0, MPI_COMM_WORLD, &receiveRequest);
-
-                    dataEventoDispositivo[count] = ReadFromMemoryObject(count - meusDispositivosOffset, malhaDevice[0],(char*) malha + (borda[1] * unitsPerElement), borda[1] * unitsPerElement * sizeof(float), tamanhoBorda * unitsPerElement * sizeof(float));
-
-                    SynchronizeCommandQueue(count - meusDispositivosOffset);
-
-                    printf("[Rank %d] Enviando para %d: ", world_rank, alvo);
-                    for (size_t i = 0; i < tamanhoBorda * unitsPerElement; ++i) {
-                        printf("%.2f ", malha[borda[1] * unitsPerElement + i]);
-                    }
-                    printf("\n");
-
-                    MPI_Isend(malha + (borda[1] * unitsPerElement), tamanhoBorda * unitsPerElement, MPI_FLOAT, alvo, 0, MPI_COMM_WORLD, &sendRequest);
-                    MPI_Wait(&sendRequest, MPI_STATUS_IGNORE);
-                    MPI_Wait(&receiveRequest, MPI_STATUS_IGNORE);
-
-                    printf("[Rank %d] Recebido de %d: ", world_rank, alvo);
-                    for (size_t i = 0; i < tamanhoBorda * unitsPerElement; ++i) {
-                        printf("%.2f ", malha[borda[0] * unitsPerElement + i]);
-                    }
-                    printf("\n");
-
-                    WriteToMemoryObject(count - meusDispositivosOffset, malhaDevice[0], (char*)malha + (borda[0] * unitsPerElement), borda[0] * unitsPerElement * sizeof(float), tamanhoBorda * unitsPerElement * sizeof(float));
-
-                    SynchronizeCommandQueue(count - meusDispositivosOffset);
-                }
-
-                if ((passo == 2 && count == meusDispositivosOffset + meusDispositivosLength - 1 && count < todosDispositivos - 1 && alvo % 2 == 0) ||
-                    (passo == 3 && count == meusDispositivosOffset + meusDispositivosLength - 1 && count < todosDispositivos - 1 && alvo % 2 == 1)) {
-
-                    borda[0] = std::max(int(offset[count] + length[count] - tamanhoBorda), 0);
-                    borda[1] = int(offset[count] + length[count]);
-                    alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, count + 1);
-
-                    dataEventoDispositivo[count] = ReadFromMemoryObject(count - meusDispositivosOffset, malhaDevice[0], (char*)malha + (borda[1] * unitsPerElement), borda[1] * unitsPerElement * sizeof(float), tamanhoBorda * unitsPerElement * sizeof(float));
-
-                    SynchronizeCommandQueue(count - meusDispositivosOffset);
-
-                    printf("[Rank %d] Enviando para %d: ", world_rank, alvo);
-                    for (size_t i = 0; i < tamanhoBorda * unitsPerElement; ++i) {
-                        printf("%.2f ", malha[borda[1] * unitsPerElement + i]);
-                    }
-                    printf("\n");
-
-                    MPI_Isend(malha + (borda[1] * unitsPerElement), tamanhoBorda * unitsPerElement, MPI_FLOAT, alvo, 0, MPI_COMM_WORLD, &sendRequest);
-                    MPI_Irecv(malha + (borda[0] * unitsPerElement), tamanhoBorda * unitsPerElement, MPI_FLOAT, alvo, 0, MPI_COMM_WORLD, &receiveRequest);
-                    MPI_Wait(&sendRequest, MPI_STATUS_IGNORE);
-                    MPI_Wait(&receiveRequest, MPI_STATUS_IGNORE);
-
-                    printf("[Rank %d] Recebido de %d: ", world_rank, alvo);
-                    for (size_t i = 0; i < tamanhoBorda * unitsPerElement; ++i) {
-                        printf("%.2f ", malha[borda[0] * unitsPerElement + i]);
-                    }
-                    printf("\n");
-
-                    WriteToMemoryObject(count - meusDispositivosOffset, malhaDevice[0], (char*)malha + (borda[0] * unitsPerElement), borda[0] * unitsPerElement * sizeof(float), tamanhoBorda * unitsPerElement * sizeof(float));
-
-                    SynchronizeCommandQueue(count - meusDispositivosOffset);
-                }
-            }
-        }
-    }
-
-    delete[] malha;
-    delete[] malhaDevice;
-    delete[] borda;
-    delete[] dataEventoDispositivo;
-}
-
-
-
-
-
-
-
-*/
-
-
-
-/*
-void OpenCLWrapper::Comms() {
-    // tamanho da borda em elementos e em bytes
-    size_t tamanhoBorda = sdSize;
-    size_t bordaBytes = tamanhoBorda * unitsPerElement * elementSize;
-
-    // buffer host grande o bastante para qualquer borda
-    char *hostBuf = new char[bordaBytes];
-
-    // IDs e offsets temporários
-
-    int malhaDevID;
-    int bordaIdx[2];
-    MPI_Request req;
-
-    // Quatro passos: 0 e 1 são intra-processo; 2 e 3 são entre processos
-    for (int passo = 0; passo < 4; ++passo) {
-        for (int count = 0; count < todosDispositivos; ++count) {
-            // só trabalho nos dispositivos deste rank
-            if (count < meusDispositivosOffset || count >= meusDispositivosOffset + meusDispositivosLength)
-                continue;
-
-            int localDev = count - meusDispositivosOffset;
-            // escolhe qual buffer de dispositivo usar
-            malhaDevID = GetDeviceMemoryObjectID(enableSwapBuffer ? swapBufferID : balancingTargetID, count);
-
-            // --- passo 0: dentro do mesmo processo, borda esquerda ---
-            if (passo == 0 && count+1 < meusDispositivosOffset+meusDispositivosLength) {
-                // vizinho “direita” no mesmo rank
-                bordaIdx[0] = offset[count+1] - tamanhoBorda;
-                if (bordaIdx[0] < 0) bordaIdx[0] = 0;
-                bordaIdx[1] = offset[count+1];
-
-                // lê e escreve direto sem MPI
-                ReadFromMemoryObject(localDev, malhaDevID,
-                                     hostBuf,
-                                     bordaIdx[0]*unitsPerElement*elementSize,
-                                     tamanhoBorda*unitsPerElement*elementSize);
-                SynchronizeCommandQueue(localDev);
-
-                WriteToMemoryObject(localDev, malhaDevID,
-                                    hostBuf,
-                                    bordaIdx[1]*unitsPerElement*elementSize,
-                                    tamanhoBorda*unitsPerElement*elementSize);
-                SynchronizeCommandQueue(localDev);
-            }
-
-            // --- passo 1: dentro do mesmo processo, borda direita ---
-            if (passo == 1 && count-1 >= meusDispositivosOffset) {
-                // vizinho “esquerda” no mesmo rank
-                bordaIdx[0] = offset[count] - tamanhoBorda;
-                if (bordaIdx[0] < 0) bordaIdx[0] = 0;
-                bordaIdx[1] = offset[count];
-
-                ReadFromMemoryObject(localDev, malhaDevID,
-                                     hostBuf,
-                                     bordaIdx[1]*unitsPerElement*elementSize,
-                                     tamanhoBorda*unitsPerElement*elementSize);
-                SynchronizeCommandQueue(localDev);
-
-                WriteToMemoryObject(localDev, malhaDevID,
-                                    hostBuf,
-                                    bordaIdx[0]*unitsPerElement*elementSize,
-                                    tamanhoBorda*unitsPerElement*elementSize);
-                SynchronizeCommandQueue(localDev);
-            }
-
-            // --- passo 2: entre processos, borda esquerda ---
-            if (passo == 2 && count > 0) {
-                int viz = count - 1;
-                int alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, viz);
-
-                // offsets em bytes
-                bordaIdx[0] = offset[count] - tamanhoBorda;
-                if (bordaIdx[0] < 0) bordaIdx[0] = 0;
-                bordaIdx[1] = offset[count];
-
-                // 1) prepara recv do host (tag = 0)
-                MPI_Irecv(hostBuf, bordaBytes, MPI_CHAR, alvo, 0, MPI_COMM_WORLD, &req);
-
-                // 2) lê do device a borda esquerda
-                ReadFromMemoryObject(localDev, malhaDevID,
-                                     hostBuf,
-                                     bordaIdx[1]*unitsPerElement*elementSize,
-                                     bordaBytes);
-                SynchronizeCommandQueue(localDev);
-
-                // 3) envia para o vizinho
-                MPI_Send(hostBuf, bordaBytes, MPI_CHAR, alvo, 0, MPI_COMM_WORLD);
-
-                // 4) espera a chegada de dados
-                MPI_Wait(&req, MPI_STATUS_IGNORE);
-
-                // 5) escreve no device onde chegaram os dados
-                WriteToMemoryObject(localDev, malhaDevID,
-                                    hostBuf,
-                                    bordaIdx[0]*unitsPerElement*elementSize,
-                                    bordaBytes);
-                SynchronizeCommandQueue(localDev);
-            }
-
-            // --- passo 3: entre processos, borda direita ---
-            if (passo == 3 && count+1 < todosDispositivos) {
-                int viz = count + 1;
-                int alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, viz);
-
-                bordaIdx[0] = offset[count] + length[count] - tamanhoBorda;
-                if (bordaIdx[0] < 0) bordaIdx[0] = 0;
-                bordaIdx[1] = offset[count] + length[count];
-
-                // 1) Irecv com tag = 1
-                MPI_Irecv(hostBuf, bordaBytes, MPI_CHAR, alvo, 1, MPI_COMM_WORLD, &req);
-
-                // 2) Read do device
-                ReadFromMemoryObject(localDev, malhaDevID,
-                                     hostBuf,
-                                     bordaIdx[0]*unitsPerElement*elementSize,
-                                     bordaBytes);
-                SynchronizeCommandQueue(localDev);
-
-                // 3) Send para o vizinho
-                MPI_Send(hostBuf, bordaBytes, MPI_CHAR, alvo, 1, MPI_COMM_WORLD);
-
-                // 4) espera chegada
-                MPI_Wait(&req, MPI_STATUS_IGNORE);
-
-                // 5) Write de volta
-                WriteToMemoryObject(localDev, malhaDevID,
-                                    hostBuf,
-                                    bordaIdx[1]*unitsPerElement*elementSize,
-                                    bordaBytes);
-                SynchronizeCommandQueue(localDev);
-            }
-        }
-    }
-
-    delete[] hostBuf;
-}
-
-*/
         
 
 void OpenCLWrapper::setSwapBufferID(int swapID) {
