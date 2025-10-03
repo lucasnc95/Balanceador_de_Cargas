@@ -34,3 +34,4 @@ export LD_LIBRARY_PATH=/share/apps/AMDAPPSDK-3.0/lib/x86_64/:$LD_LIBRARY_PATH
 # Launch MPI-based executable
 /opt/ohpc/pub/mpi/mpich-ofi-gnu13-ohpc/3.4.3/bin/mpirun -np 2 -machinefile machines2 ./a.out
 
+# OpenCLWrapper
