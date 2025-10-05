@@ -18,8 +18,8 @@ public:
     int getWorldRank();
     int AllocateMemoryObject(int _size, cl_mem_flags _memoryType, void *_hostMemory);    
     int CreateKernel(int devicePosition, const char *source, const char *kernelName);
-    void SetKernelAttribute(int devicePosition, int kernelID, int attribute, int memoryObjectID);
-    void SetKernelArg(int kernelID, int argIndex, int argSize, const void *argValue);
+    void setAttribute(int attribute, void* data, size_t size) 
+    void setAttribute(int attribute, int globalMemoryObjectID);
     void ExecuteKernel();
     void GatherResults(int dataIndex,void *resultData);
     void setKernel(const std::string &sourceFile, const std::string &kernelName);
@@ -27,7 +27,6 @@ public:
     int ReadFromMemoryObject(int devicePosition, int memoryObjectID, char *data, int offset, int size);
     void setLoadBalancer(int _elementSize, int N_Elements, int units_per_elements, int _divisionSize);
     void setSubdomainBoundary(int _sdSize, int _nArgs, int * _args);
-    void setAttribute(int attribute, int globalMemoryObjectID);
     int WriteObject(int GlobalObjectID, const char *data, int offset, int size);
     void LoadBalancing();
     void setBalancingTargetID(int targetID);
@@ -49,6 +48,8 @@ public:
 private:
     int InitParallelProcessor();
     void Initialize();
+    void SetKernelAttribute(int devicePosition, int kernelID, int attribute, void* data, size_t size);
+    void SetKernelAttribute(int devicePosition, int kernelID, int attribute, int memoryObjectID);
     int BuildAndCreateKernels(const char *sourcePath,const char *kernelName);
     void PrecisaoBalanceamento();
     void ComputarCargas(const long int *ticks, const float *cargasAntigas, float *cargasNovas, int participantes);

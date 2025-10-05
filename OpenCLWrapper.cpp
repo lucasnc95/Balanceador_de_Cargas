@@ -1,4 +1,5 @@
 #include "OpenCLWrapper.h"
+#include <algorithm> 
 #include <cstring>
 #include <cmath>
 
@@ -1308,45 +1309,6 @@ int OpenCLWrapper::WriteToMemoryObject(int devicePosition, int memoryObjectID, c
 	printf("Error! Couldn't find memory object position %i or number of events %i exceeded limit.\n", memoryObjectPosition, devices[devicePosition].numberOfEvents);
 	return -1;
 }
-/*
-int OpenCLWrapper::ReadFromMemoryObject(int devicePosition, int memoryObjectID, char *data, int offset, int size)
-{
-
-
-    cl_int state;
-
-    int memoryObjectPosition = GetMemoryObjectPosition(devicePosition, memoryObjectID);
-
-    if (memoryObjectPosition != -1 && devices[devicePosition].numberOfEvents < maxEvents)
-    {
-
-        state = clEnqueueReadBuffer(devices[devicePosition].dataCommandQueue,
-                                    devices[devicePosition].memoryObjects[memoryObjectPosition],
-                                    CL_FALSE,
-                                    offset,
-                                    size,
-                                    data
-                                    0,
-                                    NULL,
-                                    &devices[devicePosition].events[devices[devicePosition].numberOfEvents]);
-        if (state != CL_SUCCESS)
-        {
-            printf("Error reading from memory object %i.\n", state);
-            return -1;
-        }
-        else
-        {
-            clFinish(devices[devicePosition].dataCommandQueue); // Garantir que a operação está completa
-            devices[devicePosition].numberOfEvents += 1;
-            return devices[devicePosition].numberOfEvents - 1;
-        }
-    }
-
-    printf("Error! Couldn't find memory object position %i or number of events %i exceeded limit.\n", memoryObjectPosition, devices[devicePosition].numberOfEvents);
-    return -1;
-}
-
-*/
 
 
 
@@ -1480,86 +1442,6 @@ void OpenCLWrapper::FinishParallelProcessor()
 	devices = NULL;
 }
 
-/*
-
-int OpenCLWrapper::AllocateMemoryObject(size_t _size,
-                                        cl_mem_flags _flags,
-                                        void* _host_ptr)
-{
-    // 1) Cria um novo ID global
-    int globalMemObjID = globalMemoryObjectIDCounter++;
-    // inicializa a linha do mapa com -1
-    memoryObjectIDs->emplace(globalMemObjID,std::vector<int>(todosDispositivos, -1)); 
-                             
-    
-    // 2) Para cada contexto distinto, alocar UMA vez
-    for (int d = 0; d < numberOfDevices; ++d) {
-        cl_context ctx = devices[d].context;
-        // Já criamos para este contexto?
-        bool created = false;
-        for (int e = 0; e < d; ++e) {
-            if (devices[e].context == ctx &&
-                (*memoryObjectIDs)[globalMemObjID][
-                    meusDispositivosOffset + e] != -1)
-            {
-                // reutiliza o mesmo cl_mem
-                int existingLocalID =
-                    (*memoryObjectIDs)[globalMemObjID][
-                        meusDispositivosOffset + e] ;
-                // registra este localID em d também
-                (*memoryObjectIDs)[globalMemObjID][
-                    meusDispositivosOffset + d] = existingLocalID;
-                created = true;
-                break;
-            }
-        }
-        if (created) continue;
-
-        // 3) Não criada ainda para este contexto: vamos criar
-        int localPos = d;  // índice dentro do array devices[]
-        int localMemObjID = CreateMemoryObject(
-            localPos, _size, _flags, _host_ptr
-        );
-        if (localMemObjID < 0) return -1;
-
-        // 4) Registrar em **todos** os dispositivos com este mesmo contexto
-        for (int e = 0; e < numberOfDevices; ++e) {
-            if (devices[e].context == ctx) {
-                (*memoryObjectIDs)[globalMemObjID][
-                    meusDispositivosOffset + e] = localMemObjID;
-            }
-        }
-    }
-
-    return globalMemObjID;
-}
-
-*/
-
-
-/*
-
-int OpenCLWrapper::AllocateMemoryObject(size_t _size, cl_mem_flags _flags, void* _host_ptr) {
-    int globalMemObjID = globalMemoryObjectIDCounter;
-    globalMemoryObjectIDCounter++;
-    memoryObjectIDs->emplace(globalMemObjID, std::vector<int>(todosDispositivos, -1)); // Inicializa com -1 para indicar que ainda não foi setado
-
-    for (int count = 0; count < todosDispositivos; count++) {
-        if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength) {
-            int deviceMemObjID = CreateMemoryObject(count - meusDispositivosOffset, _size, _flags, _host_ptr);
-            (*memoryObjectIDs)[globalMemObjID][count] = deviceMemObjID;
-            printf("Rank: %d Device id: %d\n", world_rank, deviceMemObjID);
-        }
-    }
-    
-
-    MPI_Barrier(MPI_COMM_WORLD);
-
-    return globalMemObjID;
-}
-
-*/
-
 
 int OpenCLWrapper::AllocateMemoryObject(int _size, cl_mem_flags _flags, void* _host_ptr) {
     int globalMemObjID = 0;
@@ -1579,8 +1461,7 @@ int OpenCLWrapper::AllocateMemoryObject(int _size, cl_mem_flags _flags, void* _h
         if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength) {
             int deviceMemObjID = CreateMemoryObject(count - meusDispositivosOffset, _size, _flags, _host_ptr);
             (*memoryObjectIDs)[globalMemObjID][count] = deviceMemObjID;
-            printf("Rank: %d -> GlobalID: %d, DeviceID: %d, Dispositivo: %d\n",
-                   world_rank, globalMemObjID, deviceMemObjID, count);
+            
         }
     }
 
@@ -1622,34 +1503,74 @@ for(int count = 0; count < todosDispositivos; count++)
 
 
 
-
 int OpenCLWrapper::WriteObject(int GlobalObjectID, const char *data, int offset, int size) {
+    bool success = true;
 
-int returnF;
+    // Parâmetros da escrita solicitada (já em bytes)
+    long long global_write_offset_bytes = offset;
+    long long global_write_size_bytes = size;
 
- 
-for(int count = 0; count < todosDispositivos; count++)
-			{
-		if(count >= meusDispositivosOffset && count < meusDispositivosOffset+meusDispositivosLength)
-		{
-        int memoryObjectID = GetDeviceMemoryObjectID(GlobalObjectID, count - meusDispositivosOffset);
-       returnF = WriteToMemoryObject(count - meusDispositivosOffset, memoryObjectID, data,offset, size);
+    // Bytes por elemento (posição)
+    int elemBytes = elementSize * unitsPerElement;
+
+    // Itera sobre todos os dispositivos
+    for (int count = 0; count < todosDispositivos; count++) {
         
+        // Apenas o rank que gerencia o dispositivo 'count' executa a lógica de escrita
+        if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength) {
+            
+            // Converte a partição do dispositivo (que está em elementos) para BYTES
+            long long device_offset_bytes = (long long)this->offset[count] * elemBytes;
+            long long device_len_bytes = (long long)this->length[count] * elemBytes;
+            long long device_end_bytes = device_offset_bytes + device_len_bytes;
+
+            // Calcula a interseção em BYTES entre a escrita solicitada e a partição deste dispositivo
+            long long start_write_pos_bytes = std::max(global_write_offset_bytes, device_offset_bytes);
+            long long end_write_pos_bytes = std::min(global_write_offset_bytes + global_write_size_bytes, device_end_bytes);
+
+            long long len_to_write_bytes = end_write_pos_bytes - start_write_pos_bytes;
+
+            // Se há uma porção a ser escrita neste dispositivo
+            if (len_to_write_bytes > 0) {
+                int local_device_idx = count - meusDispositivosOffset;
+                int memoryObjectID = GetDeviceMemoryObjectID(GlobalObjectID, count);
+
+                if (memoryObjectID != -1) {
+                    // Offset de LEITURA no buffer do HOST 'data'.
+                    // Onde, dentro do buffer 'data', estão os bytes que precisamos enviar.
+                    long long host_read_offset_bytes = start_write_pos_bytes - global_write_offset_bytes;
+
+                    // --- CORREÇÃO PRINCIPAL AQUI ---
+                    // Offset de ESCRITA no buffer do DISPOSITIVO.
+                    // Seguindo o modelo da GatherResults, usamos o offset GLOBAL absoluto em bytes.
+                    long long device_write_offset_bytes = start_write_pos_bytes;
+
+                    // Executa a escrita com os parâmetros corretos
+                    int result = WriteToMemoryObject(
+                        local_device_idx,
+                        memoryObjectID,
+                        data + host_read_offset_bytes, // Ponteiro para o início dos dados corretos no host
+                        device_write_offset_bytes,     // Onde escrever no buffer do dispositivo (offset global)
+                        len_to_write_bytes             // Quantos bytes escrever
+                    );
+                    
+                    if (result == -1) {
+                        success = false;
+                    }
+                } else {
+                    fprintf(stderr, "[Rank %d] Erro: ID de objeto de memória inválido para dispositivo global %d.\n", world_rank, count);
+                    success = false;
+                }
+            }
+        }
     }
-}
 
- for(int count = 0; count < todosDispositivos; count++)
-			{
-		if(count >= meusDispositivosOffset && count < meusDispositivosOffset+meusDispositivosLength)
-		{
-         SynchronizeCommandQueue(count-meusDispositivosOffset);
+    // Sincronização final
+    for (int i = 0; i < meusDispositivosLength; i++) {
+        SynchronizeCommandQueue(i);
     }
-}       
 
-
-
-return returnF;
-
+    return success ? 0 : -1;
 }
 
 void OpenCLWrapper::setBalancingTargetID(int targetID)
@@ -1878,3 +1799,33 @@ globWr  = new double[meusDispositivosLength];
     delete[] localRd;  delete[] localWr;
 }
 
+// NOVA SetKernelAttribute sobrecarregada para valores
+void OpenCLWrapper::SetKernelAttribute(int devicePosition, int kernelID, int attribute, void* data, size_t size)
+{
+    int kernelPosition = GetKernelPosition(devicePosition, kernelID);
+    if (kernelPosition != -1) {
+        // Define o argumento do kernel passando o tamanho e um ponteiro para o valor
+        cl_int state = clSetKernelArg(devices[devicePosition].kernels[kernelPosition], attribute, size, data);
+        if (state != CL_SUCCESS) {
+            printf("Error setting kernel argument by value! Error code: %d\n", state);
+        }
+    } else {
+        printf("Error setting kernel argument: Kernel ID=%i does not exist!\n", kernelID);
+    }
+}
+
+// NOVA setAttribute para valores (int, float, etc.)
+void OpenCLWrapper::setAttribute(int attribute, void* data, size_t size) {
+    // Itera sobre todos os dispositivos gerenciados por este processo
+    for (int count = meusDispositivosOffset; count < meusDispositivosOffset + meusDispositivosLength; count++) {
+        int local_idx = count - meusDispositivosOffset;
+        
+        // Chama a função de baixo nível para definir o argumento do kernel
+        SetKernelAttribute(local_idx, kernelDispositivo[count], attribute, data, size);
+    }
+
+    // Sincroniza para garantir que os argumentos foram definidos
+    for (int i = 0; i < meusDispositivosLength; i++) {
+        SynchronizeCommandQueue(i);
+    }
+}

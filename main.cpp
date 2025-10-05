@@ -164,7 +164,7 @@ int main(int argc, char** argv) {
         
     }
 
-	int rank = openCL.getWorldRank();
+		int rank = openCL.getWorldRank();
         openCL.GatherResults(bMemObj, malhaAux);
 //	printf("Meu rank (main): %i", rank);
         if(rank == 0)
