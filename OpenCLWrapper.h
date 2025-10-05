@@ -15,7 +15,6 @@ public:
     ~OpenCLWrapper();
     int InitDevices(const std::string &_device_types, const unsigned int _maxNumberOfDevices);
     void FinishParallelProcessor();
-    int getWorldRank();
     int AllocateMemoryObject(int _size, cl_mem_flags _memoryType, void *_hostMemory);    
     int CreateKernel(int devicePosition, const char *source, const char *kernelName);
     void SetKernelAttribute(int devicePosition, int kernelID, int attribute, int memoryObjectID);
@@ -31,7 +30,6 @@ public:
     int WriteObject(int GlobalObjectID, const char *data, int offset, int size);
     void LoadBalancing();
     void setBalancingTargetID(int targetID);
-    void setSwapBufferID(int swapID);
     int getMaxNumberOfPlatforms() const;
     void setMaxNumberOfPlatforms(int value);
     int getMaxNumberOfDevices() const;
@@ -45,11 +43,11 @@ public:
     int getMaxEvents() const;
     void setMaxEvents(int value);
     void Probing();
-    int getComm();
+    int getWorldRank() const;
 private:
     int InitParallelProcessor();
     void Initialize();
-    int BuildAndCreateKernels(const char *sourcePath,const char *kernelName);
+    
     void PrecisaoBalanceamento();
     void ComputarCargas(const long int *ticks, const float *cargasAntigas, float *cargasNovas, int participantes);
     int RecuperarPosicaoHistograma(int *histograma, int tamanho, int indice);
@@ -63,7 +61,6 @@ private:
     int unitsPerElement;
     int balancingTargetID;
     int deviceIndex;
-    MPI_Comm comm;
     long int itCounter = 0;
     int world_rank, world_size;
     bool kernelSet = false;
@@ -78,8 +75,6 @@ private:
     cl_device_id *deviceList;
     cl_uint numberOfDevices;
     bool sdSet = false;
-    bool enableSwapBuffer = false;
-    int swapBufferID;
     struct Device {
         cl_device_id deviceID;
         cl_device_type deviceType;
@@ -92,7 +87,7 @@ private:
         int *memoryObjectID;
         int *kernelID;
         cl_event *events;
-        int deviceMaxWorkItemsPerWorkGroup;
+        size_t deviceMaxWorkItemsPerWorkGroup;
         cl_uint deviceComputeUnits;
         int numberOfMemoryObjects;
         int numberOfKernels;
@@ -113,13 +108,7 @@ private:
     int automaticNumber = 0;
 
     // Variáveis do balanceador de carga
-        double *localLat ;
- 
-
-    double *globLat;
-    double *globBan;
-    double *globRd;
-    double *globWr;
+    
     long int offsetComputacao;
     long int lengthComputacao;
     int *dispositivosWorld;
@@ -129,10 +118,10 @@ private:
     float *cargasAntigas;
     int *DataToKernelDispositivo;
     int **swapBufferDispositivo;
-    double *tempos;
+    float *tempos;
     int *offset;
     int *length;
-    double latencia, banda, tempoBalanceamento, readByte, fatorErro;
+    float latencia, banda, tempoBalanceamento, fatorErro;
     int *kernelDispositivo;
     int *kernelEventoDispositivo;
     int *parametrosMalhaDispositivo;
@@ -150,7 +139,6 @@ private:
     int *memObjects;
     int nArgs;
     int *args;
-    int precision = 10;
     // Parâmetros ajustáveis
     int maxNumberOfPlatforms = 10;
     int maxNumberOfDevices = 10;
@@ -164,8 +152,7 @@ private:
     int Maximum(int a, int b);
     int GetMemoryObjectPosition(int devicePosition, int memoryObjectID);
     int GetKernelPosition(int devicePosition, int kernelID);
-    void CollectOverheadsPerDevice(int deviceID,double &lat, double &ban, double &rd, double &wr);
-    void CollectOverheads();
+
     int RunKernel(int devicePosition, int kernelID, int parallelDataOffset, int parallelData, int workGroupSize);
     void SynchronizeCommandQueue(int devicePosition);
     void SynchronizeEvent(int eventPosition);
@@ -173,7 +160,7 @@ private:
     long int GetEventTaskTicks(int devicePosition, int eventPosition);
     int GetDeviceMemoryObjectID(int globalMemObjID, int deviceIndex);
     cl_device_type GetDeviceType();
-    int GetDeviceMaxWorkItemsPerWorkGroup();
+    size_t GetDeviceMaxWorkItemsPerWorkGroup();
     cl_uint GetDeviceComputeUnits();
     bool isDeviceCPU(int devicePosition);
     void Comms();

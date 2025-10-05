@@ -1,6 +1,6 @@
 __kernel void vectorAdd(__global const float *a, __global const float *b, __global float *c) {
     int id = get_global_id(0);
-    const long unsigned int N = 33554432*2*2;
+    const long unsigned int N = 1024;
     if(id < N)
         c[id] += (a[id] + b[id])+1.0f;
     
