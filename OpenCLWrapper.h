@@ -18,7 +18,7 @@ public:
     int getWorldRank();
     int AllocateMemoryObject(int _size, cl_mem_flags _memoryType, void *_hostMemory);    
     int CreateKernel(int devicePosition, const char *source, const char *kernelName);
-    void setAttribute(int attribute, void* data, size_t size) 
+    void setAttribute(int attribute, void* data, size_t size);
     void setAttribute(int attribute, int globalMemoryObjectID);
     void ExecuteKernel();
     void GatherResults(int dataIndex,void *resultData);
