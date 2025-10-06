@@ -1,4 +1,4 @@
-#include "OpenCLWrapper.h"
+/*#include "OpenCLWrapper.h"
 #include <iostream>
 
 //Tipos de celulas.
@@ -136,7 +136,7 @@ int main(int argc, char** argv) {
 	openCL.setAttribute(2, aMemObj);
     openCL.setSubdomainBoundary(sub, 2, vetArgs);
 	openCL.setBalancingTargetID(bMemObj);
-//	openCL.Probing();
+	openCL.Probing();
     for (int x = 0; x < 10000; x++) {
 		
 		 if (x % 2 == 0) {
@@ -180,39 +180,31 @@ int main(int argc, char** argv) {
     return 0;
 }
 
+*/
 
-
-/*
 #include "OpenCLWrapper.h"
 #include <iostream>
 
 int main(int argc, char** argv) {
 
     OpenCLWrapper openCL(argc, argv);
-//    printf("iniciar devices... \n");
     openCL.InitDevices("ALL_DEVICES", 10);
-  //  printf("iniciados os devices, setando o kernel... \n");
     openCL.setKernel("kernel_teste.cl", "kernelSomaVizinhos");
 
-    int tam = 16;
+    int tam = 1000;
     float *malha = new float[tam];
 
     double	tempoInicio = MPI_Wtime();
 
 	for(int i = 0; i < tam; i++)
 	malha[i] = 1;
-	int total_elements = 16;
-
-    // Configuração do balanceador de carga no OpenCLWrapper
+	
     int sub = 1  ;
-    openCL.setLoadBalancer(sizeof(float), total_elements, 1, sub);
+    openCL.setLoadBalancer(sizeof(float), tam, 1, sub);
 
-    // Alocar objetos de memória OpenCL
     int bMemObj = openCL.AllocateMemoryObject(tam * sizeof(float), CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, malha);
-   // printf("Alocando a...\n");
     int cMemObj = openCL.AllocateMemoryObject(tam * sizeof(float), CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, malha);
-   // printf("Alocando b...\n");
-std::cout<<"b memObj: "<<bMemObj<<" c memObj: "<<cMemObj<<std::endl;
+	std::cout<<"b memObj: "<<bMemObj<<" c memObj: "<<cMemObj<<std::endl;
 
     float *malhaAux = new float[tam];  // Para armazenar os resultados
 	int *vetArgs = new int[2];
@@ -220,15 +212,14 @@ std::cout<<"b memObj: "<<bMemObj<<" c memObj: "<<cMemObj<<std::endl;
 	vetArgs[1] = cMemObj;
 	float *malhaAux2 = new float[tam];
 	int id;
-    // Definir atributos de kernel
-//	openCL.setAttribute(0, bMemObj);
-  //      openCL.setAttribute(1, cMemObj);
-        openCL.setSubdomainBoundary(sub, 2, vetArgs);
-//	openCL.setBalancingTargetID(bMemObj);
-	//openCL.Probing();
+    
+	openCL.setSubdomainBoundary(sub, 2, vetArgs);
+	
         int rank = openCL.getWorldRank();
     for (int x = 0; x < 3; x++) {
+		 
 		 if (x % 2 == 0) {
+
            openCL.setAttribute(0, bMemObj);
            openCL.setAttribute(1, cMemObj);
            openCL.setBalancingTargetID(bMemObj);
@@ -242,20 +233,16 @@ std::cout<<"b memObj: "<<bMemObj<<" c memObj: "<<cMemObj<<std::endl;
             openCL.setSwapBufferID(bMemObj);
 
        }
+	if(x == 0)
+		openCL.Probing();
 
 	openCL.ExecuteKernel();
 }
 	openCL.GatherResults(bMemObj, malhaAux);
 	openCL.GatherResults(cMemObj, malhaAux2);
-//	int rank = openCL.getWorldRank();
 	if(rank == 0){
-//	std::cout<<"Malhas finais: "<<std::endl;
-//	std::cout<<"Malha memObj b: "<<std::endl;
-//  	for(int i = 0; i < tam; i++)
-//		std::cout<<"vet["<<i<<"] = "<<malhaAux[i]<<std::endl;
-//	std::cout<<"Malha memObj c: "<<std::endl;
         for(int i = 0; i < tam; i++)
-                std::cout<<"vet["<<i<<"] = "<<malhaAux[i]<<std::endl;
+            std::cout<<"vet["<<i<<"] = "<<malhaAux[i]<<std::endl;
 
 	double tempoFim = MPI_Wtime();
 	std::cout<<"Tempo execução:"<<tempoFim-tempoInicio<<std::endl;
@@ -266,4 +253,4 @@ std::cout<<"b memObj: "<<bMemObj<<" c memObj: "<<cMemObj<<std::endl;
     return 0;
 }
 
-*/
+
