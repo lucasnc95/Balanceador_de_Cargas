@@ -191,7 +191,7 @@ int main(int argc, char** argv) {
     openCL.InitDevices("ALL_DEVICES", 10);
     openCL.setKernel("kernel_teste.cl", "kernelSomaVizinhos");
 
-    int tam = 1000;
+    int tam = 20;
     float *malha = new float[tam];
 
     double	tempoInicio = MPI_Wtime();
@@ -199,7 +199,7 @@ int main(int argc, char** argv) {
 	for(int i = 0; i < tam; i++)
 	malha[i] = 1;
 	
-    int sub = 1  ;
+    int sub = 1;
     openCL.setLoadBalancer(sizeof(float), tam, 1, sub);
 
     int bMemObj = openCL.AllocateMemoryObject(tam * sizeof(float), CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, malha);
@@ -235,6 +235,8 @@ int main(int argc, char** argv) {
        }
 	if(x == 0)
 		openCL.Probing();
+	else
+		openCL.LoadBalancing();
 
 	openCL.ExecuteKernel();
 }

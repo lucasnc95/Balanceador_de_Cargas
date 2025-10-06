@@ -635,7 +635,7 @@ void OpenCLWrapper::Probing()
 {
     // Etapa 0: Medir o desempenho e calcular as novas cargas ideais.
     PrecisaoBalanceamento();
-
+    CollectOverheads();
     // --- ETAPA 1: CALCULAR AS NOVAS PARTIÇÕES (de forma robusta) ---
     int* novosOffsets = new int[todosDispositivos + 1];
     int* novosLengths = new int[todosDispositivos];
@@ -779,191 +779,101 @@ void OpenCLWrapper::PrecisaoBalanceamento() {
 
 
 void OpenCLWrapper::LoadBalancing()
-{   tempoCB = 0.0f;
-	double tempoInicioBalanceamento = MPI_Wtime();
-    // double tempoComputacaoInterna = tempos[0];
-	PrecisaoBalanceamento();
-    char *auxData = new char[nElements * unitsPerElement * elementSize];
-	// Computar novas cargas.
-	// double localTempoCB;
-	// for (int count = 0; count < todosDispositivos; count++)
-	// {
-	// 	if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength)
-	// 	{
-	// 		SynchronizeCommandQueue(count - meusDispositivosOffset);
-	// 		if (tempoComputacaoInterna < tempos[count] )
-	// 			tempoComputacaoInterna = tempos[count];
-	// 		if(count == 0)
-	// 			localTempoCB = cargasNovas[count] * (tempos[count]);
+{
+    // Etapa 0: Medir desempenho e calcular novas cargas ideais
+    PrecisaoBalanceamento();
 
-	// 		else
-	// 			localTempoCB = (cargasNovas[count] - cargasNovas[count - 1]) * (tempos[count]);
-	// 	}
-	// }
-	// MPI_Allreduce(&tempoCB, &localTempoCB, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
-	// tempoCB *= nElements*elementSize*unitsPerElement;
-	// std::cout<<"TempoCB: "<<tempoCB<<std::endl;
-	// std::cout<<"writeByte: "<<writeByte<<std::endl;
-    // std::cout<<"readByte: "<<readByte<<std::endl;
-    // std::cout<<"banda: "<<banda<<std::endl;
-    // std::cout<<"latência: "<<latencia<<std::endl;
-	// std::cout<<"tempo calculado: "<<((latencia) + ComputarNorma(cargasAntigas, cargasNovas, todosDispositivos) * nElements*elementSize*unitsPerElement * ((writeByte) + (banda)) + (tempoCB))<<std::endl;
-	// std::cout<<"Tempo anterior: "<<tempoComputacaoInterna<<std::endl;
-	// if ((latencia + ComputarNorma(cargasAntigas, cargasNovas, todosDispositivos) * (writeByte + banda) + tempoCB) < tempoComputacaoInterna)
+    // --- ETAPA 1: MODELO DE CUSTO ---
+    double tempoComputacaoMax = 0.0;
+    for (int i = 0; i < todosDispositivos; ++i) {
+        tempoComputacaoMax = std::max(tempoComputacaoMax, tempos[i]);
+    }
+
+    double tempoComputacaoProposto = 0.0;
+    for (int i = 0; i < todosDispositivos; ++i) {
+        float frac = (i == 0) ? cargasNovas[0] : (cargasNovas[i] - cargasNovas[i-1]);
+        tempoComputacaoProposto = std::max(tempoComputacaoProposto, frac * tempoComputacaoMax);
+    }
     
-        double tempoComputacaoInterna = 0.0;
-    for (int i = 0; i < todosDispositivos; ++i) {
-        tempoComputacaoInterna = std::max(tempoComputacaoInterna, tempos[i]);
-    }
+    double totalBytesMovidos = ComputarNorma(cargasAntigas, cargasNovas, todosDispositivos) * (double)nElements * unitsPerElement * elementSize;
+    // Custo de comunicação considera ler de A, enviar, receber, e escrever em B
+    double overheadComunicacao = latencia + totalBytesMovidos * (readByte + banda + writeByte);
+    
+    double custoProposto = tempoComputacaoProposto + overheadComunicacao;
 
-    // 2) compute the predicted balanced compute time:
-    //    each device will take a fraction of the work
-    double localTempoCB = 0.0;
-    for (int i = 0; i < todosDispositivos; ++i) {
-        float frac = (i == 0 ? cargasNovas[0]
-                            : cargasNovas[i] - cargasNovas[i-1]);
-        localTempoCB = std::max(localTempoCB, frac * tempoComputacaoInterna);
-    }
+    // --- ETAPA 2: DECISÃO DE BALANCEAR ---
+    if (custoProposto < tempoComputacaoMax) 
+    {
+        if(world_rank == 0) {
+            std::cout << "\n=== Decisão de Balanceamento: EXECUTAR ===" << std::endl;
+            std::cout << "  - Custo Atual (s): " << tempoComputacaoMax << std::endl;
+            std::cout << "  - Custo Proposto (s): " << custoProposto << " (Computação: " << tempoComputacaoProposto << " + Comunicação: " << overheadComunicacao << ")" << std::endl;
+        }
 
-    // 3) global worst‐case across MPI ranks
-    double globalTempoCB = 0.0;
-    MPI_Allreduce(&localTempoCB, &globalTempoCB, 1,
-                  MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+        // --- ETAPA 3: REDISTRIBUIÇÃO DE DADOS ---
+        
+        // 3.1. Calcular as novas partições de forma robusta
+        int* novosOffsets = new int[todosDispositivos + 1];
+        int* novosLengths = new int[todosDispositivos];
+        novosOffsets[0] = 0;
+        for (int i = 0; i < todosDispositivos; i++) {
+            novosOffsets[i + 1] = static_cast<int>(round(cargasNovas[i] * static_cast<float>(nElements)));
+        }
+        novosOffsets[todosDispositivos] = nElements;
+        for (int i = 0; i < todosDispositivos; i++) {
+            novosLengths[i] = novosOffsets[i + 1] - novosOffsets[i];
+        }
 
-    // 4) store it so future decisions see it
-    tempoCB = globalTempoCB;  // in seconds
+        int elemBytes = elementSize * unitsPerElement;
+        char* globalDataSnapshot = new char[(size_t)nElements * elemBytes];
 
-    // 5) compute the rest of your cost model (all in seconds)
-    double totalBytes = double(nElements) * unitsPerElement * elementSize;
-    double overheadComm = latencia + ComputarNorma(cargasAntigas, cargasNovas, todosDispositivos)* totalBytes * (writeByte + banda + readByte);
-    // 6) print a sane table
-    std::cout << "=== LoadBalancing ===\n";
-    std::cout << "Tempo computacao interna (s): " << tempoComputacaoInterna << "\n";
-    std::cout << "Latency (s): " << latencia << "\n";
-    std::cout << "Read (s/byte): " << readByte << "\n";
-    std::cout << "Write (s/byte): " << writeByte << "\n";
-    std::cout << "Bandwidth (s/byte): " << banda << "\n";
-    std::cout << "Total bytes: " << totalBytes << "\n";
-    std::cout << "OverheadComm (s): " << overheadComm << "\n";
-    std::cout << "Norma: " << ComputarNorma(cargasAntigas, cargasNovas, todosDispositivos) << "\n";
-    std::cout << "TempoCB (s): " << tempoCB << "\n";
-    std::cout << "Custo previsto (s): " << overheadComm << "\n";
-
-    // 7) compare and rebalance
-    if (overheadComm + tempoCB < tempoComputacaoInterna) 
-	{
-		for (int count = 0; count < todosDispositivos; count++)
-		{
-			if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength)
-			{
-				int overlapNovoOffset = static_cast<int>(round(((count == 0) ? 0.0f : cargasNovas[count - 1]) * (static_cast<float>(nElements))));
-				int overlapNovoLength;
-            if (count == todosDispositivos - 1) {
-                // Último dispositivo pega todos os elementos restantes
-                overlapNovoLength = nElements - overlapNovoOffset;
-            } else {
-                overlapNovoLength = static_cast<int>(round(cargasNovas[count] * static_cast<float>(nElements)) - round(count == 0 ? 0.0f : cargasNovas[count - 1] * static_cast<float>(nElements)));
+        // 3.2. Redistribui o PRIMEIRO buffer (balancingTargetID)
+        if (world_rank == 0) std::cout << "  - Redistribuindo buffer 1..." << std::endl;
+        GatherResults(balancingTargetID, globalDataSnapshot);
+        for (int count = meusDispositivosOffset; count < meusDispositivosOffset + meusDispositivosLength; ++count) {
+            int localIdx = count - meusDispositivosOffset;
+            int memObj = GetDeviceMemoryObjectID(balancingTargetID, count);
+            size_t new_offset_bytes = (size_t)novosOffsets[count] * elemBytes;
+            size_t new_length_bytes = (size_t)novosLengths[count] * elemBytes;
+            if (new_length_bytes > 0) {
+                WriteToMemoryObject(localIdx, memObj, globalDataSnapshot + new_offset_bytes, new_offset_bytes, new_length_bytes);
             }
-				for (int count2 = 0; count2 < todosDispositivos; count2++)
-				{
-					if (count > count2)
-					{
-						// Atender requisicoes de outros processos.
-						if (RecuperarPosicaoHistograma(dispositivosWorld, world_size, count) != RecuperarPosicaoHistograma(dispositivosWorld, world_size, count2))
-						{
-							int overlap[2];
-							int alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, count2);
-							char *malha = auxData;
-							int malhaDevice = GetDeviceMemoryObjectID(balancingTargetID, count);
-							MPI_Recv(overlap, 2, MPI_INT, alvo, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-							// Podem ocorrer requisicoes vazias.
-							if (overlap[1] > 0)
-							{
-								ReadFromMemoryObject(count - meusDispositivosOffset, malhaDevice, (char *)(malha + (overlap[0] * unitsPerElement)), overlap[0] * unitsPerElement * elementSize, overlap[1] * unitsPerElement * elementSize);
-								SynchronizeCommandQueue(count - meusDispositivosOffset);
-								int sizeCarga = overlap[1] * unitsPerElement;
-								MPI_Send(malha + (overlap[0] * unitsPerElement), sizeCarga, MPI_CHAR, alvo, 0, MPI_COMM_WORLD);
-							}
-						}
-					}
-					else if (count < count2)
-					{
-						// Fazer requisicoes a outros processos.
-						int overlapAntigoOffset = static_cast<int>(round(((count2 == 0) ? 0 : cargasAntigas[count2 - 1]) * (nElements)));
-						int overlapAntigoLength = static_cast<int>(round(((count2 == 0) ? cargasAntigas[count2] - 0.0f : cargasAntigas[count2] - cargasAntigas[count2 - 1]) * (nElements)));
+        }
 
-						int intersecaoOffset;
-						int intersecaoLength;
+        // --- CORREÇÃO PRINCIPAL: Redistribui o SEGUNDO buffer (swapBufferID) ---
+        if (enableSwapBuffer) {
+             if (world_rank == 0) std::cout << "  - Redistribuindo buffer 2..." << std::endl;
+            GatherResults(swapBufferID, globalDataSnapshot);
+            for (int count = meusDispositivosOffset; count < meusDispositivosOffset + meusDispositivosLength; ++count) {
+                int localIdx = count - meusDispositivosOffset;
+                int memObj = GetDeviceMemoryObjectID(swapBufferID, count);
+                size_t new_offset_bytes = (size_t)novosOffsets[count] * elemBytes;
+                size_t new_length_bytes = (size_t)novosLengths[count] * elemBytes;
+                if (new_length_bytes > 0) {
+                    WriteToMemoryObject(localIdx, memObj, globalDataSnapshot + new_offset_bytes, new_offset_bytes, new_length_bytes);
+                }
+            }
+        }
 
-						if (((overlapAntigoOffset <= overlapNovoOffset - divisionSize) && ComputarIntersecao(overlapAntigoOffset, overlapAntigoLength, overlapNovoOffset - divisionSize, overlapNovoLength + divisionSize, &intersecaoOffset, &intersecaoLength)) ||
-								((overlapAntigoOffset > overlapNovoOffset - divisionSize) && ComputarIntersecao(overlapNovoOffset - divisionSize, overlapNovoLength + divisionSize, overlapAntigoOffset, overlapAntigoLength, &intersecaoOffset, &intersecaoLength)))
-						{
-							if (count2 >= meusDispositivosOffset && count2 < meusDispositivosOffset + meusDispositivosLength)
-							{    
-                                char *malha = auxData;  
-								int malhaDevice[2] = {GetDeviceMemoryObjectID(balancingTargetID, count), GetDeviceMemoryObjectID(balancingTargetID, count2)};
-								ReadFromMemoryObject(count2 - meusDispositivosOffset, malhaDevice[1], (char *)(malha + (intersecaoOffset * unitsPerElement)), intersecaoOffset * unitsPerElement * sizeof(float), intersecaoLength * unitsPerElement * sizeof(float));
-								SynchronizeCommandQueue(count2 - meusDispositivosOffset);
-								WriteToMemoryObject(count - meusDispositivosOffset, malhaDevice[0], (char *)(malha + (intersecaoOffset * unitsPerElement)), intersecaoOffset * unitsPerElement * sizeof(float), intersecaoLength * unitsPerElement * sizeof(float));
-								SynchronizeCommandQueue(count - meusDispositivosOffset);
-							}
-							else
-							{
-								// Fazer uma requisicao.
-								if (RecuperarPosicaoHistograma(dispositivosWorld, world_size, count) != RecuperarPosicaoHistograma(dispositivosWorld, world_size, count2))
-								{
-									int overlap[2] = {intersecaoOffset, intersecaoLength};
-									int alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, count2);
-									char *malha = auxData;
-							        int malhaDevice = GetDeviceMemoryObjectID(balancingTargetID, count);
-									MPI_Send(overlap, 2, MPI_INT, alvo, 0, MPI_COMM_WORLD);
-									MPI_Recv(malha + (overlap[0] * unitsPerElement), overlap[1] * unitsPerElement, MPI_FLOAT, alvo, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-									WriteToMemoryObject(count - meusDispositivosOffset, malhaDevice, (char *)(malha + (overlap[0] * unitsPerElement)), overlap[0] * unitsPerElement * sizeof(float), overlap[1] * unitsPerElement * sizeof(float));
-									SynchronizeCommandQueue(count - meusDispositivosOffset);
-								}
-							}
-						}
-						else
-						{
-							// Fazer uma requisicao vazia.
-							if (RecuperarPosicaoHistograma(dispositivosWorld, world_size, count) != RecuperarPosicaoHistograma(dispositivosWorld, world_size, count2))
-							{
-								int overlap[2] = {0, 0};
-								int alvo = RecuperarPosicaoHistograma(dispositivosWorld, world_size, count2);
-								char *malha = auxData;
-								MPI_Send(overlap, 2, MPI_INT, alvo, 0, MPI_COMM_WORLD);
-							}
-						}
-					}
-				}
+        // Atualiza os arrays de offset, length e cargas para o novo estado
+        memcpy(this->offset, novosOffsets, todosDispositivos * sizeof(int));
+        memcpy(this->length, novosLengths, todosDispositivos * sizeof(int));
+        memcpy(this->cargasAntigas, this->cargasNovas, todosDispositivos * sizeof(float));
 
-				offset[count] = overlapNovoOffset;
-				length[count] = overlapNovoLength;
+        delete[] novosOffsets;
+        delete[] novosLengths;
+        delete[] globalDataSnapshot;
 
-				//WriteToMemoryObject(count - meusDispositivosOffset, parametrosMalhaDispositivo[count], (char *)parametrosMalha[count], 0, sizeof(int) * NUMERO_PARAMETROS_MALHA);
-				SynchronizeCommandQueue(count - meusDispositivosOffset);
-			}
-		}
-		memcpy(cargasAntigas, cargasNovas, sizeof(float) * todosDispositivos);
-
-         int somaLengthDepois = 0;
-    for (int i = 0; i < todosDispositivos; i++) {
-        somaLengthDepois += length[i];
+        MPI_Barrier(MPI_COMM_WORLD);
     }
-   // std::cout << "Soma do length depois do balanceamento: " << somaLengthDepois << std::endl;
-
-
-    for (int i = 0; i < todosDispositivos; i++)
-        std::cout << " Dispositivo[" << i << "] = " << ((double)length[i]/(double)somaLengthDepois)*100 << "% " << std::endl;
-    std::cout << "\n";
-		MPI_Barrier(MPI_COMM_WORLD);
-		double tempoFimBalanceamento = MPI_Wtime();
-		tempoBalanceamento += tempoFimBalanceamento - tempoInicioBalanceamento;
-	}
-	delete[]auxData;
+    else {
+        if(world_rank == 0) {
+            std::cout << "\n=== Decisão de Balanceamento: IGNORAR ===" << std::endl;
+            std::cout << "  - Custo Atual (s): " << tempoComputacaoMax << std::endl;
+            std::cout << "  - Custo Proposto (s): " << custoProposto << " (Não vantajoso)" << std::endl;
+        }
+    }
 }
-
-
 
 
 
@@ -1637,48 +1547,41 @@ void OpenCLWrapper::CollectOverheadsPerDevice(int deviceID, double &lat, double 
 
 
 
-// 2) Para cada dispositivo local mede e depois faz MPI_Allreduce para todos
 void OpenCLWrapper::CollectOverheads() {
-    // aloca arrays locais e globais
-double *localLat = new double[meusDispositivosLength];
-double  *localBan = new double[meusDispositivosLength];
-double  *localRd  = new double[meusDispositivosLength];
-double   *localWr  = new double[meusDispositivosLength];
+    // 1. Cada rank encontra o overhead máximo APENAS entre seus dispositivos locais
+    double max_local_lat = 0.0;
+    double max_local_ban = 0.0;
+    double max_local_rd = 0.0;
+    double max_local_wr = 0.0;
 
-globLat = new double[meusDispositivosLength];
-globBan = new double[meusDispositivosLength];
-globRd  = new double[meusDispositivosLength];
-globWr  = new double[meusDispositivosLength];
-
-    // 1) cada rank mede só seus dispositivos
     for (int i = 0; i < meusDispositivosLength; ++i) {
         int deviceID = meusDispositivosOffset + i;
-        CollectOverheadsPerDevice(deviceID, localLat[i], localBan[i], localRd [i], localWr [i]);
+        double current_lat, current_ban, current_rd, current_wr;
+        
+        CollectOverheadsPerDevice(deviceID, current_lat, current_ban, current_rd, current_wr);
+
+        max_local_lat = std::max(max_local_lat, current_lat);
+        max_local_ban = std::max(max_local_ban, current_ban);
+        max_local_rd = std::max(max_local_rd, current_rd);
+        max_local_wr = std::max(max_local_wr, current_wr);
     }
 
-    // 2) faz Allreduce máxima sobre cada elemento do array local
-    MPI_Allreduce(localLat, globLat, meusDispositivosLength,MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
-    MPI_Allreduce(localBan, globBan, meusDispositivosLength,MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
-    MPI_Allreduce(localRd,  globRd,  meusDispositivosLength,MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
-    MPI_Allreduce(localWr,  globWr,  meusDispositivosLength,MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+    // 2. Todos os ranks usam Allreduce para encontrar o máximo global (o pior caso do sistema)
+    MPI_Allreduce(&max_local_lat, &latencia, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+    MPI_Allreduce(&max_local_ban, &banda, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+    MPI_Allreduce(&max_local_rd, &readByte, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+    MPI_Allreduce(&max_local_wr, &writeByte, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
 
-        for (int i = 0; i < meusDispositivosLength; ++i) {
-        latencia  = std::max(latencia, globLat[i]);
-        banda     = std::max(banda,    globBan[i]);
-        readByte  = std::max(readByte, globRd [i]);
-        writeByte = std::max(writeByte,globWr [i]);
+    // Opcional: imprimir os valores globais finais apenas no rank 0
+    if (world_rank == 0) {
+        std::cout << "--- Overheads Globais (Pior Caso) ---" << std::endl;
+        std::cout << "Latencia (s): " << latencia << std::endl;
+        std::cout << "Banda (s/byte): " << banda << std::endl;
+        std::cout << "Read (s/byte): " << readByte << std::endl;
+        std::cout << "Write (s/byte): " << writeByte << std::endl;
+        std::cout << "------------------------------------" << std::endl;
     }
-
-    std::cout<<"latencia: "<<latencia<<std::endl;
-    std::cout<<"banda: "<<banda<<std::endl;
-    std::cout<<"readByte: "<<readByte<<std::endl;
-    std::cout<<"writeByte: "<<writeByte<<std::endl;
-
-    // libera arrays temporários
-    delete[] localLat; delete[] localBan;
-    delete[] localRd;  delete[] localWr;
 }
-
 // NOVA SetKernelAttribute sobrecarregada para valores
 void OpenCLWrapper::SetKernelAttribute(int devicePosition, int kernelID, int attribute, void* data, size_t size)
 {
