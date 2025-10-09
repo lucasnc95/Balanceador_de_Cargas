@@ -1,4 +1,4 @@
-/*#include "OpenCLWrapper.h"
+#include "OpenCLWrapper.h"
 #include <iostream>
 
 //Tipos de celulas.
@@ -97,7 +97,6 @@ std::cout<<"Cells printed: "<<counter<<std::endl;
 
 
 
-
 int main(int argc, char** argv) {
      
     OpenCLWrapper openCL(argc, argv);
@@ -136,7 +135,7 @@ int main(int argc, char** argv) {
 	openCL.setAttribute(2, aMemObj);
     openCL.setSubdomainBoundary(sub, 2, vetArgs);
 	openCL.setBalancingTargetID(bMemObj);
-	openCL.Probing();
+
     for (int x = 0; x < 10000; x++) {
 		
 		 if (x % 2 == 0) {
@@ -152,21 +151,21 @@ int main(int argc, char** argv) {
             openCL.setSwapBufferID(bMemObj);
         }
 
-//		if(x > 0 && x % 1000 == 0)
-//		openCL.LoadBalancing();
+		if(x > 0 && x % 1000 == 0)
+		openCL.LoadBalancing();
+
+		else if (x == 0)
+		openCL.Probing();
 
 
-		openCL.ExecuteKernel();
-
-
-		
+		openCL.ExecuteKernel();	
 		
         
     }
 
 		int rank = openCL.getWorldRank();
         openCL.GatherResults(bMemObj, malhaAux);
-//	printf("Meu rank (main): %i", rank);
+
         if(rank == 0)
         {
         LerPontosHIS(malhaAux, parametros);
@@ -180,7 +179,7 @@ int main(int argc, char** argv) {
     return 0;
 }
 
-*/
+/*
 
 #include "OpenCLWrapper.h"
 #include <iostream>
@@ -255,4 +254,4 @@ int main(int argc, char** argv) {
     return 0;
 }
 
-
+*/
