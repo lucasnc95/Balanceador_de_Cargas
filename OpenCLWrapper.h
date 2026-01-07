@@ -171,7 +171,8 @@ private:
     void SynchronizeCommandQueue(int devicePosition);
     void SynchronizeEvent(int eventPosition);
     long int GetEventTaskOverheadTicks(int devicePosition, int eventPosition);
-    long int GetEventTaskTicks(int devicePosition, int eventPosition);
+    // long int GetEventTaskTicks(int devicePosition, int eventPosition);
+    long int GetEventTaskTicks(int devicePosition, int startEventPosition, int endEventPosition);    
     int GetDeviceMemoryObjectID(int globalMemObjID, int deviceIndex);
     cl_device_type GetDeviceType();
     int GetDeviceMaxWorkItemsPerWorkGroup();

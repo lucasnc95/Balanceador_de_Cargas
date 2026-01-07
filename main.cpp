@@ -136,7 +136,7 @@ int main(int argc, char** argv) {
     openCL.setSubdomainBoundary(sub, 2, vetArgs);
 	openCL.setBalancingTargetID(bMemObj);
 
-    for (int x = 0; x < 10000; x++) {
+    for (int x = 0; x < 1000; x++) {
 		
 		 if (x % 2 == 0) {
             openCL.setAttribute(0, bMemObj);
@@ -151,12 +151,12 @@ int main(int argc, char** argv) {
             openCL.setSwapBufferID(bMemObj);
         }
 
-		if(x > 0 && x % 1000 == 0)
-		openCL.LoadBalancing();
-
-		else if (x == 0)
-		openCL.Probing();
-
+		 if(x % 100 == 0)
+		
+		 openCL.LoadBalancing();
+		
+		
+	
 
 		openCL.ExecuteKernel();	
 		
