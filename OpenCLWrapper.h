@@ -58,6 +58,16 @@ private:
     float ComputarNorma(const float *cargasAntigas, const float *cargasNovas, int participantes);
     void initializeLengthOffset(int offset, int length, int deviceIndex);
     int CreateMemoryObject(int devicePosition, int size, cl_mem_flags memoryType, void *hostMemory);
+    cl_event *startEvents; // Array para guardar o evento inicial de cada dispositivo
+    cl_event *endEvents;   // Array para guardar o evento final de cada dispositivo
+    bool captureStartEvent = true; // Flag para controlar a captura do inicio
+    bool firstLoadBalancing = true; // Flag para identificar a primeira chamada
+
+    // Nova assinatura para receber os eventos diretamente
+    double GetEventTaskTicks(cl_event startEvent, cl_event endEvent);
+
+    // Função auxiliar para gerenciar a retenção de eventos
+    void SaveEvent(cl_event source, cl_event &destination);
     int elementSize;
     int divisionSize;
     int unitsPerElement;
@@ -171,7 +181,7 @@ private:
     void SynchronizeEvent(int eventPosition);
     long int GetEventTaskOverheadTicks(int devicePosition, int eventPosition);
     // long int GetEventTaskTicks(int devicePosition, int eventPosition);
-    double GetEventTaskTicks(int devicePosition, int startEventPosition, int endEventPosition);  
+    //double GetEventTaskTicks(int devicePosition, int startEventPosition, int endEventPosition);  
     int GetDeviceMemoryObjectID(int globalMemObjID, int deviceIndex);
     cl_device_type GetDeviceType();
     int GetDeviceMaxWorkItemsPerWorkGroup();

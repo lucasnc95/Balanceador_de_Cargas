@@ -103,7 +103,7 @@ int main(int argc, char** argv) {
     openCL.InitDevices("ALL_DEVICES", 10);  
     openCL.setKernel("kernels.cl", "ProcessarPontos");
 
-    int x = 10, y = 10, z = 10;
+    int x = 120, y = 120, z = 120;
     int tam = x * y * z * MALHA_TOTAL_CELULAS;   
     int *parametros = new int[NUMERO_PARAMETROS_MALHA];
     float *malha = new float[tam];  // Alocar a malha corretamente
@@ -136,7 +136,7 @@ int main(int argc, char** argv) {
     openCL.setSubdomainBoundary(sub, 2, vetArgs);
 	openCL.setBalancingTargetID(bMemObj);
 
-    for (int x = 0; x < 1000; x++) {
+    for (int x = 0; x < 10000; x++) {
 		
 		 if (x % 2 == 0) {
             openCL.setAttribute(0, bMemObj);
@@ -151,9 +151,9 @@ int main(int argc, char** argv) {
             openCL.setSwapBufferID(bMemObj);
         }
 
-		 if(x % 100 == 0)
+		 if(x % 1000 == 0)
 		
-		 openCL.LoadBalancing();
+		 openCL.LoadBalancing(); 
 		
 		
 	

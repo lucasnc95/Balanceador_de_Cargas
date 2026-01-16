@@ -2,6 +2,7 @@
 #include <algorithm> 
 #include <cstring>
 #include <cmath>
+#include <iomanip> 
 
 OpenCLWrapper::OpenCLWrapper(int &argc, char** &argv) {
    MPI_Init(&argc, &argv);
@@ -377,67 +378,137 @@ int OpenCLWrapper::CreateMemoryObject(int devicePosition,int size,cl_mem_flags m
 }
 
 
+// void OpenCLWrapper::ExecuteKernel() {
+//     if(!sdSet) {
+//         printf("erro");
+//     } else {
+//         MPI_Barrier(MPI_COMM_WORLD);
+//      //   printf("\n--- INÍCIO DA ITERAÇÃO %ld ---\n", itCounter);
+
+//         // 1. Computação dos PONTOS INTERNOS
+//         for(int count = 0; count < todosDispositivos; count++) {
+//             if(count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength) {
+//                 int local_idx = count - meusDispositivosOffset;
+//                 int internal_offset = offset[count] + sdSize;
+//                 int internal_length = length[count] - 2*sdSize; 
+                
+//                 // Print para a computação interna
+//               //  printf("[Rank %d] INTERNO:   Dispositivo Global %d (Local %d) | Offset: %d, Length: %d (Índices %d a %d)\n",
+//                       // world_rank, count, local_idx, internal_offset, internal_length, internal_offset, internal_offset + internal_length - 1);
+
+//                 if (internal_length > 0) {
+//                     RunKernel(local_idx, kernelDispositivo[count], internal_offset, internal_length, isDeviceCPU(local_idx) ? 8 : 64);
+//                     SynchronizeCommandQueue(local_idx);
+//                 }
+//             }
+//         }
+        
+//         // 2. Comunicação das BORDAS (HALO EXCHANGE)
+//         MPI_Barrier(MPI_COMM_WORLD);
+//       //  printf("--- INICIANDO Comms() ---\n");
+//         Comms();
+//         MPI_Barrier(MPI_COMM_WORLD);
+//       //  printf("--- FINALIZANDO Comms() ---\n");
+
+//         // 3. Computação das BORDAS
+//         for (int count = 0; count < todosDispositivos; count++) {
+//             if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength) {
+//                 int local_idx = count - meusDispositivosOffset;
+                
+//                 // Print para a borda esquerda
+//              //   printf("[Rank %d] BORDA ESQ: Dispositivo Global %d (Local %d) | Offset: %d, Length: %d (Índice %d)\n",
+//                       // world_rank, count, local_idx, offset[count], sdSize, offset[count]);
+//                 RunKernel(local_idx, kernelDispositivo[count], offset[count], sdSize, isDeviceCPU(local_idx) ? 8 : 64);
+//                 SynchronizeCommandQueue(local_idx);
+                
+//                 // Print para a borda direita
+//                 int right_border_offset = offset[count] + length[count] - sdSize;
+//              //   printf("[Rank %d] BORDA DIR: Dispositivo Global %d (Local %d) | Offset: %d, Length: %d (Índice %d)\n",
+//                       // world_rank, count, local_idx, right_border_offset, sdSize, right_border_offset);
+//                 RunKernel(local_idx, kernelDispositivo[count], right_border_offset, sdSize, isDeviceCPU(local_idx) ? 8 : 64);
+//                 SynchronizeCommandQueue(local_idx);
+//             }
+//         }
+//     	MPI_Barrier(MPI_COMM_WORLD);
+//        // printf("--- FIM DA ITERAÇÃO %ld ---\n", itCounter);
+//     }
+    
+//     // Sincronização final
+//     for (int i = 0; i < meusDispositivosLength; ++i) {
+//         SynchronizeCommandQueue(i);
+//     }
+//     itCounter++;
+// }
+
+
+
+
 void OpenCLWrapper::ExecuteKernel() {
     if(!sdSet) {
-        printf("erro");
-    } else {
-        MPI_Barrier(MPI_COMM_WORLD);
-     //   printf("\n--- INÍCIO DA ITERAÇÃO %ld ---\n", itCounter);
+        printf("erro: subdomain boundary not set\n");
+        return;
+    } 
+    
+    MPI_Barrier(MPI_COMM_WORLD);
 
-        // 1. Computação dos PONTOS INTERNOS
-        for(int count = 0; count < todosDispositivos; count++) {
-            if(count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength) {
-                int local_idx = count - meusDispositivosOffset;
-                int internal_offset = offset[count] + sdSize;
-                int internal_length = length[count] - 2*sdSize; 
+    // 1. PONTOS INTERNOS
+    for(int count = 0; count < todosDispositivos; count++) {
+        if(count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength) {
+            int local_idx = count - meusDispositivosOffset;
+            int internal_offset = offset[count] + sdSize;
+            int internal_length = length[count] - 2*sdSize; 
+            
+            if (internal_length > 0) {
+                int evtIdx = RunKernel(local_idx, kernelDispositivo[count], internal_offset, internal_length, isDeviceCPU(local_idx) ? 8 : 64);
                 
-                // Print para a computação interna
-              //  printf("[Rank %d] INTERNO:   Dispositivo Global %d (Local %d) | Offset: %d, Length: %d (Índices %d a %d)\n",
-                      // world_rank, count, local_idx, internal_offset, internal_length, internal_offset, internal_offset + internal_length - 1);
-
-                if (internal_length > 0) {
-                    RunKernel(local_idx, kernelDispositivo[count], internal_offset, internal_length, isDeviceCPU(local_idx) ? 8 : 64);
-                    SynchronizeCommandQueue(local_idx);
+                // CAPTURA DO INÍCIO (Só na primeira iteração após o balanceamento)
+                if (captureStartEvent) {
+                    SaveEvent(devices[local_idx].events[evtIdx], startEvents[count]);
                 }
-            }
-        }
-        
-        // 2. Comunicação das BORDAS (HALO EXCHANGE)
-        MPI_Barrier(MPI_COMM_WORLD);
-      //  printf("--- INICIANDO Comms() ---\n");
-        Comms();
-        MPI_Barrier(MPI_COMM_WORLD);
-      //  printf("--- FINALIZANDO Comms() ---\n");
-
-        // 3. Computação das BORDAS
-        for (int count = 0; count < todosDispositivos; count++) {
-            if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength) {
-                int local_idx = count - meusDispositivosOffset;
-                
-                // Print para a borda esquerda
-             //   printf("[Rank %d] BORDA ESQ: Dispositivo Global %d (Local %d) | Offset: %d, Length: %d (Índice %d)\n",
-                      // world_rank, count, local_idx, offset[count], sdSize, offset[count]);
-                RunKernel(local_idx, kernelDispositivo[count], offset[count], sdSize, isDeviceCPU(local_idx) ? 8 : 64);
-                SynchronizeCommandQueue(local_idx);
-                
-                // Print para a borda direita
-                int right_border_offset = offset[count] + length[count] - sdSize;
-             //   printf("[Rank %d] BORDA DIR: Dispositivo Global %d (Local %d) | Offset: %d, Length: %d (Índice %d)\n",
-                      // world_rank, count, local_idx, right_border_offset, sdSize, right_border_offset);
-                RunKernel(local_idx, kernelDispositivo[count], right_border_offset, sdSize, isDeviceCPU(local_idx) ? 8 : 64);
                 SynchronizeCommandQueue(local_idx);
             }
         }
-    	MPI_Barrier(MPI_COMM_WORLD);
-       // printf("--- FIM DA ITERAÇÃO %ld ---\n", itCounter);
     }
     
-    // Sincronização final
+    // Desliga a captura de início até o próximo LoadBalancing
+    if (captureStartEvent) captureStartEvent = false;
+
+    // 2. COMUNICAÇÃO
+    MPI_Barrier(MPI_COMM_WORLD);
+    Comms();
+    MPI_Barrier(MPI_COMM_WORLD);
+
+    // 3. BORDAS
+    for (int count = 0; count < todosDispositivos; count++) {
+        if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength) {
+            int local_idx = count - meusDispositivosOffset;
+            
+            // Borda Esquerda
+            RunKernel(local_idx, kernelDispositivo[count], offset[count], sdSize, isDeviceCPU(local_idx) ? 8 : 64);
+            SynchronizeCommandQueue(local_idx);
+            
+            // Borda Direita (Última operação -> Fim do ciclo)
+            int right_border_offset = offset[count] + length[count] - sdSize;
+            int evtIdx = RunKernel(local_idx, kernelDispositivo[count], right_border_offset, sdSize, isDeviceCPU(local_idx) ? 8 : 64);
+            
+            // SEMPRE SALVA O FIM da iteração atual
+            SaveEvent(devices[local_idx].events[evtIdx], endEvents[count]);
+            
+            SynchronizeCommandQueue(local_idx);
+        }
+    }
+    MPI_Barrier(MPI_COMM_WORLD);
+    
+    // Limpa fila, mas nossos eventos start/end estão seguros via clRetainEvent
     for (int i = 0; i < meusDispositivosLength; ++i) {
         SynchronizeCommandQueue(i);
     }
     itCounter++;
 }
+
+
+
+
 
 int OpenCLWrapper::RunKernel(int devicePosition,
                              int kernelID,
@@ -570,12 +641,28 @@ void OpenCLWrapper::GatherResults(int dataIndex, void *resultData) {
     free(displs);
 }
 
-
+void OpenCLWrapper::SaveEvent(cl_event source, cl_event &destination) {
+    if (destination != NULL) {
+        clReleaseEvent(destination); // Solta o evento antigo
+    }
+    destination = source;
+    if (destination != NULL) {
+        clRetainEvent(destination); // Segura o novo evento para não ser deletado
+    }
+}
 
 
 void OpenCLWrapper::setLoadBalancer(int _elementSize, int N_Elements, int units_per_elements, int _divisionSize) {
     ticks = new double[todosDispositivos];
     for(int i=0; i<todosDispositivos; i++) ticks[i] = 0.0; 
+    startEvents = new cl_event[todosDispositivos];
+    endEvents = new cl_event[todosDispositivos];
+    for(int i = 0; i < todosDispositivos; i++) {
+        startEvents[i] = NULL;
+        endEvents[i] = NULL;
+    }
+    captureStartEvent = true;
+    firstLoadBalancing = true;
     tempos_por_carga = new double[todosDispositivos];    
     cargasNovas = new float[todosDispositivos]; 
     cargasAntigas = new float[todosDispositivos]; 
@@ -632,136 +719,261 @@ void OpenCLWrapper::setLoadBalancer(int _elementSize, int N_Elements, int units_
 }
 
 
-void OpenCLWrapper::Probing()
-{
-    // Etapa 0: Medir o desempenho e calcular as novas cargas ideais.
-    PrecisaoBalanceamento();
-    CollectOverheads();
-    // --- ETAPA 1: CALCULAR AS NOVAS PARTIÇÕES (de forma robusta) ---
-    int* novosOffsets = new int[todosDispositivos + 1];
-    int* novosLengths = new int[todosDispositivos];
+// void OpenCLWrapper::Probing()
+// {
+//     // Etapa 0: Medir o desempenho e calcular as novas cargas ideais.
+//     PrecisaoBalanceamento();
+//     CollectOverheads();
+//     // --- ETAPA 1: CALCULAR AS NOVAS PARTIÇÕES (de forma robusta) ---
+//     int* novosOffsets = new int[todosDispositivos + 1];
+//     int* novosLengths = new int[todosDispositivos];
     
-    novosOffsets[0] = 0;
-    for (int i = 0; i < todosDispositivos; i++) {
-        // Calcula o ponto final da partição e arredonda.
-        novosOffsets[i + 1] = static_cast<int>(round(cargasNovas[i] * static_cast<float>(nElements)));
-    }
-    // Garante que a última partição vá até o final, corrigindo possíveis erros de arredondamento.
-    novosOffsets[todosDispositivos] = nElements;
+//     novosOffsets[0] = 0;
+//     for (int i = 0; i < todosDispositivos; i++) {
+//         // Calcula o ponto final da partição e arredonda.
+//         novosOffsets[i + 1] = static_cast<int>(round(cargasNovas[i] * static_cast<float>(nElements)));
+//     }
+//     // Garante que a última partição vá até o final, corrigindo possíveis erros de arredondamento.
+//     novosOffsets[todosDispositivos] = nElements;
 
-    for (int i = 0; i < todosDispositivos; i++) {
-        // O tamanho é a diferença entre o início da próxima partição e o início da atual.
-        novosLengths[i] = novosOffsets[i + 1] - novosOffsets[i];
-    }
+//     for (int i = 0; i < todosDispositivos; i++) {
+//         // O tamanho é a diferença entre o início da próxima partição e o início da atual.
+//         novosLengths[i] = novosOffsets[i + 1] - novosOffsets[i];
+//     }
 
-    // --- ETAPA 2: COLETAR TODOS OS DADOS (Gather) ---
+//     // --- ETAPA 2: COLETAR TODOS OS DADOS (Gather) ---
 
-    // Aloca um buffer global no host para conter uma cópia de todos os dados.
-    int elemBytes = elementSize * unitsPerElement;
-    char* globalDataSnapshot = new char[(size_t)nElements * elemBytes];
+//     // Aloca um buffer global no host para conter uma cópia de todos os dados.
+//     int elemBytes = elementSize * unitsPerElement;
+//     char* globalDataSnapshot = new char[(size_t)nElements * elemBytes];
     
-    // Usa a função GatherResults que já existe para coletar os dados de todos os dispositivos.
-    // Ela junta os dados de forma ordenada no buffer 'globalDataSnapshot'.
-    GatherResults(balancingTargetID, globalDataSnapshot);
+//     // Usa a função GatherResults que já existe para coletar os dados de todos os dispositivos.
+//     // Ela junta os dados de forma ordenada no buffer 'globalDataSnapshot'.
+//     GatherResults(balancingTargetID, globalDataSnapshot);
     
-    // --- ETAPA 3: DISTRIBUIR OS DADOS PARA AS NOVAS PARTIÇÕES (Scatter) ---
+//     // --- ETAPA 3: DISTRIBUIR OS DADOS PARA AS NOVAS PARTIÇÕES (Scatter) ---
     
-    // Cada processo agora itera sobre seus dispositivos locais...
-    for (int count = meusDispositivosOffset; count < meusDispositivosOffset + meusDispositivosLength; ++count) {
-        int localIdx = count - meusDispositivosOffset;
-        int memObj = GetDeviceMemoryObjectID(balancingTargetID, count);
+//     // Cada processo agora itera sobre seus dispositivos locais...
+//     for (int count = meusDispositivosOffset; count < meusDispositivosOffset + meusDispositivosLength; ++count) {
+//         int localIdx = count - meusDispositivosOffset;
+//         int memObj = GetDeviceMemoryObjectID(balancingTargetID, count);
         
-        // ...e escreve a fatia correta do snapshot global para o dispositivo,
-        // de acordo com a NOVA partição calculada.
-        size_t new_offset_bytes = (size_t)novosOffsets[count] * elemBytes;
-        size_t new_length_bytes = (size_t)novosLengths[count] * elemBytes;
+//         // ...e escreve a fatia correta do snapshot global para o dispositivo,
+//         // de acordo com a NOVA partição calculada.
+//         size_t new_offset_bytes = (size_t)novosOffsets[count] * elemBytes;
+//         size_t new_length_bytes = (size_t)novosLengths[count] * elemBytes;
         
-        if (new_length_bytes > 0) {
-            WriteToMemoryObject(
-                localIdx,
-                memObj,
-                globalDataSnapshot + new_offset_bytes, 
-                new_offset_bytes,                    
-                new_length_bytes
-            );
-        }
-    }
+//         if (new_length_bytes > 0) {
+//             WriteToMemoryObject(
+//                 localIdx,
+//                 memObj,
+//                 globalDataSnapshot + new_offset_bytes, 
+//                 new_offset_bytes,                    
+//                 new_length_bytes
+//             );
+//         }
+//     }
     
-    // Atualiza os arrays globais de offset e length com as novas partições
-    memcpy(this->offset, novosOffsets, todosDispositivos * sizeof(int));
-    memcpy(this->length, novosLengths, todosDispositivos * sizeof(int));
-    memcpy(this->cargasAntigas, this->cargasNovas, todosDispositivos * sizeof(float));
+//     // Atualiza os arrays globais de offset e length com as novas partições
+//     memcpy(this->offset, novosOffsets, todosDispositivos * sizeof(int));
+//     memcpy(this->length, novosLengths, todosDispositivos * sizeof(int));
+//     memcpy(this->cargasAntigas, this->cargasNovas, todosDispositivos * sizeof(float));
 
-    // Limpeza
-    delete[] novosOffsets;
-    delete[] novosLengths;
-    delete[] globalDataSnapshot;
+//     // Limpeza
+//     delete[] novosOffsets;
+//     delete[] novosLengths;
+//     delete[] globalDataSnapshot;
 
-    // Sincronização e verificação (opcional, mas bom para depuração)
-    MPI_Barrier(MPI_COMM_WORLD);
-    if (world_rank == 0) {
-        int somaLengthDepois = 0;
-        for (int i = 0; i < todosDispositivos; i++) {
-            somaLengthDepois += length[i];
-        }
-        std::cout << "Soma do length depois do probing: " << somaLengthDepois << " (Total esperado: " << nElements << ")" << std::endl;
-        std::cout << "Partições após o probing: " << std::endl;
-        for (int i = 0; i < todosDispositivos; i++) {
-            std::cout << "  Dispositivo[" << i << "]: Offset=" << offset[i] << ", Length=" << length[i] << std::endl;
-        }
-    }
-}
-
-
+//     // Sincronização e verificação (opcional, mas bom para depuração)
+//     MPI_Barrier(MPI_COMM_WORLD);
+//     if (world_rank == 0) {
+//         int somaLengthDepois = 0;
+//         for (int i = 0; i < todosDispositivos; i++) {
+//             somaLengthDepois += length[i];
+//         }
+//         std::cout << "Soma do length depois do probing: " << somaLengthDepois << " (Total esperado: " << nElements << ")" << std::endl;
+//         std::cout << "Partições após o probing: " << std::endl;
+//         for (int i = 0; i < todosDispositivos; i++) {
+//             std::cout << "  Dispositivo[" << i << "]: Offset=" << offset[i] << ", Length=" << length[i] << std::endl;
+//         }
+//     }
+// }
 
 
-#include <iomanip> // Necessário para std::fixed e std::setprecision
+
+
+// Necessário para std::fixed e std::setprecision
+
+// void OpenCLWrapper::PrecisaoBalanceamento() {
+//     // 1) INICIALIZAÇÃO LIMPA (Evita lixo de memória)
+//     // Zera os vetores locais antes de começar
+//     std::fill(ticks, ticks + todosDispositivos, 0.0);
+//     std::fill(tempos, tempos + todosDispositivos, 0.0);
+    
+//     // Arrays auxiliares para índices de eventos
+//     int *startEventIdx = new int[meusDispositivosLength];
+//     int *endEventIdx = new int[meusDispositivosLength];
+
+//     // Limpa a fila de comandos para garantir que não haja eventos pendentes
+//     for (int i = 0; i < meusDispositivosLength; i++) {
+//         SynchronizeCommandQueue(i);
+//     }
+
+//     // 2) MEDIÇÃO (Loop de precisão)
+//     for (int iter = 0; iter < precision; ++iter) {
+        
+//         for (int count = 0; count < todosDispositivos; ++count) {
+//             // Apenas executa nos meus dispositivos
+//             if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength) {
+//                 int localIdx = count - meusDispositivosOffset;
+                
+//                 // Só executa se tiver trabalho (length > 0) para evitar erros do OpenCL
+//                 if (length[count] > 0) {
+//                     int evtIndex = RunKernel(
+//                         localIdx,
+//                         kernelDispositivo[count],
+//                         offset[count],
+//                         length[count],
+//                         isDeviceCPU(localIdx) ? 8 : 256
+//                     );
+
+//                     // Captura o primeiro evento
+//                     if (iter == 0) {
+//                         startEventIdx[localIdx] = evtIndex;
+//                     }
+//                     // Atualiza o último evento
+//                     endEventIdx[localIdx] = evtIndex;
+//                 }
+//             }
+//         }
+//     }
+
+//     // 3) LEITURA LOCAL DOS TEMPOS
+//     for (int count = 0; count < todosDispositivos; ++count) {
+//         if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength) {
+//             int localIdx = count - meusDispositivosOffset;
+            
+//             if (length[count] > 0) {
+//                 clFinish(devices[localIdx].kernelCommandQueue);
+
+//                 // Obtém o tempo total da bateria de testes em SEGUNDOS
+//                 double totalSeconds = GetEventTaskTicks(localIdx, startEventIdx[localIdx], endEventIdx[localIdx]);
+                
+//                 ticks[count] = totalSeconds;
+                
+//                 // Reset de eventos
+//                 devices[localIdx].numberOfEvents = 0;
+//             } else {
+//                 // Se o dispositivo não rodou nada (carga 0), definimos um tempo muito pequeno mas não zero
+//                 // para evitar divisão por zero na ComputarCargas.
+//                 ticks[count] = 0.000001; 
+//             }
+//         }
+//     }
+
+//     delete[] startEventIdx;
+//     delete[] endEventIdx;
+
+//     // 4) SINCRONIZAÇÃO GLOBAL (Evita que outros processos tenham lixo)
+//     // Usamos um buffer temporário para garantir que o Allreduce funcione corretamente
+//     double *ticksGlobal = new double[todosDispositivos];
+    
+//     // Soma os tempos de todos os processos. Como cada processo só preencheu seus devices (e zerou os outros),
+//     // a soma resultará no vetor completo correto em TODOS os processos.
+//     MPI_Allreduce(ticks, ticksGlobal, todosDispositivos, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+    
+//     // Atualiza o vetor ticks da classe com os dados globais
+//     std::copy(ticksGlobal, ticksGlobal + todosDispositivos, ticks);
+//     delete[] ticksGlobal;
+
+//     // 5) CÁLCULO DE TEMPOS MÉDIOS E SANITY CHECK (Igual em todos os processos)
+//     for (int i = 0; i < todosDispositivos; ++i) {
+//         // Média por iteração
+//         double mediaSegundos = ticks[i] / (double)precision;
+
+//         // --- FILTRO DE VALORES INVÁLIDOS (Clamp) ---
+//         // Se for muito pequeno (quase zero ou negativo), fixa num mínimo (1 nanossegundo)
+//         if (mediaSegundos < 1.0e-9) mediaSegundos = 1.0e-9;
+        
+//         // Se for absurdamente grande (ex: > 1000 segundos por iteração, ou lixo 1e35), 
+//         // limita a um valor alto mas "real" para não quebrar a matemática.
+//         if (mediaSegundos > 1000.0) mediaSegundos = 1000.0;
+
+//         tempos[i] = mediaSegundos;
+//     }
+
+//     // 6) CÁLCULO DAS CARGAS (Agora seguro pois tempos[] está limpo e sincronizado)
+//     ComputarCargas(tempos, cargasAntigas, cargasNovas, todosDispositivos);
+
+//     // Opcional: Print de Debug apenas no Rank 0 com precisão controlada
+    
+//     if (world_rank == 0) {
+//         std::cout << "--- Tempos Medidos (s) ---" << std::endl;
+//         std::cout << std::fixed << std::setprecision(5); // Limita visualização a 5 casas
+//         for(int i=0; i<todosDispositivos; i++) {
+//             std::cout << "Dev " << i << ": " << tempos[i] << " s | Carga: " << cargasNovas[i] << std::endl;
+//         }
+//         std::cout.unsetf(std::ios_base::floatfield); // Reseta formatação
+//     }
+    
+// }
 
 void OpenCLWrapper::PrecisaoBalanceamento() {
-    // 1) INICIALIZAÇÃO LIMPA (Evita lixo de memória)
-    // Zera os vetores locais antes de começar
+    // 1. INICIALIZAÇÃO
+    // Zera os acumuladores
     std::fill(ticks, ticks + todosDispositivos, 0.0);
     std::fill(tempos, tempos + todosDispositivos, 0.0);
-    
-    // Arrays auxiliares para índices de eventos
-    int *startEventIdx = new int[meusDispositivosLength];
-    int *endEventIdx = new int[meusDispositivosLength];
 
-    // Limpa a fila de comandos para garantir que não haja eventos pendentes
+    // Arrays locais para segurar os eventos (start e end) com segurança
+    cl_event *localStartEvents = new cl_event[meusDispositivosLength];
+    cl_event *localEndEvents = new cl_event[meusDispositivosLength];
+
+    // Limpa filas e inicializa ponteiros
     for (int i = 0; i < meusDispositivosLength; i++) {
-        SynchronizeCommandQueue(i);
+        localStartEvents[i] = NULL;
+        localEndEvents[i] = NULL;
+        SynchronizeCommandQueue(i); 
     }
 
-    // 2) MEDIÇÃO (Loop de precisão)
+    // 2. LOOP DE MEDIÇÃO (Benchmark)
     for (int iter = 0; iter < precision; ++iter) {
         
         for (int count = 0; count < todosDispositivos; ++count) {
-            // Apenas executa nos meus dispositivos
+            // Verifica se o dispositivo é local
             if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength) {
                 int localIdx = count - meusDispositivosOffset;
                 
-                // Só executa se tiver trabalho (length > 0) para evitar erros do OpenCL
+                // Só executa se tiver carga
                 if (length[count] > 0) {
-                    int evtIndex = RunKernel(
-                        localIdx,
-                        kernelDispositivo[count],
-                        offset[count],
-                        length[count],
+                    // Executa e pega o índice do evento na lista temporária
+                    int evtIdx = RunKernel(
+                        localIdx, 
+                        kernelDispositivo[count], 
+                        offset[count], 
+                        length[count], 
                         isDeviceCPU(localIdx) ? 8 : 256
                     );
+                    
+                    cl_event currentEvt = devices[localIdx].events[evtIdx];
 
-                    // Captura o primeiro evento
+                    // Se for a primeira iteração, guarda como START
                     if (iter == 0) {
-                        startEventIdx[localIdx] = evtIndex;
+                        localStartEvents[localIdx] = currentEvt;
+                        clRetainEvent(localStartEvents[localIdx]); // Importante: Impede que o evento seja destruído
                     }
-                    // Atualiza o último evento
-                    endEventIdx[localIdx] = evtIndex;
+
+                    // Atualiza sempre o END (no final do loop será o último)
+                    if (localEndEvents[localIdx] != NULL) {
+                        clReleaseEvent(localEndEvents[localIdx]); // Solta o anterior
+                    }
+                    localEndEvents[localIdx] = currentEvt;
+                    clRetainEvent(localEndEvents[localIdx]); // Segura o novo
                 }
             }
         }
     }
 
-    // 3) LEITURA LOCAL DOS TEMPOS
+    // 3. CÁLCULO DOS TEMPOS
     for (int count = 0; count < todosDispositivos; ++count) {
         if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength) {
             int localIdx = count - meusDispositivosOffset;
@@ -769,190 +981,257 @@ void OpenCLWrapper::PrecisaoBalanceamento() {
             if (length[count] > 0) {
                 clFinish(devices[localIdx].kernelCommandQueue);
 
-                // Obtém o tempo total da bateria de testes em SEGUNDOS
-                double totalSeconds = GetEventTaskTicks(localIdx, startEventIdx[localIdx], endEventIdx[localIdx]);
-                
-                ticks[count] = totalSeconds;
-                
-                // Reset de eventos
-                devices[localIdx].numberOfEvents = 0;
+                // Calcula o tempo TOTAL decorrido (em Segundos)
+                // Usa a nova assinatura que aceita (cl_event, cl_event)
+                ticks[count] = GetEventTaskTicks(localStartEvents[localIdx], localEndEvents[localIdx]);
             } else {
-                // Se o dispositivo não rodou nada (carga 0), definimos um tempo muito pequeno mas não zero
-                // para evitar divisão por zero na ComputarCargas.
-                ticks[count] = 0.000001; 
+                ticks[count] = 1.0e-9; // Tempo mínimo para evitar divisão por zero
             }
+
+            // Limpeza: Libera os eventos retidos
+            if (localStartEvents[localIdx]) clReleaseEvent(localStartEvents[localIdx]);
+            if (localEndEvents[localIdx])   clReleaseEvent(localEndEvents[localIdx]);
+            
+            // Reseta a contagem de eventos da classe para não estourar o limite
+            devices[localIdx].numberOfEvents = 0;
         }
     }
+    
+    delete[] localStartEvents;
+    delete[] localEndEvents;
 
-    delete[] startEventIdx;
-    delete[] endEventIdx;
-
-    // 4) SINCRONIZAÇÃO GLOBAL (Evita que outros processos tenham lixo)
-    // Usamos um buffer temporário para garantir que o Allreduce funcione corretamente
+    // 4. SINCRONIZAÇÃO GLOBAL
+    // Soma os tempos de todos os processos (Gather implícito via Sum)
     double *ticksGlobal = new double[todosDispositivos];
-    
-    // Soma os tempos de todos os processos. Como cada processo só preencheu seus devices (e zerou os outros),
-    // a soma resultará no vetor completo correto em TODOS os processos.
     MPI_Allreduce(ticks, ticksGlobal, todosDispositivos, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-    
-    // Atualiza o vetor ticks da classe com os dados globais
     std::copy(ticksGlobal, ticksGlobal + todosDispositivos, ticks);
     delete[] ticksGlobal;
 
-    // 5) CÁLCULO DE TEMPOS MÉDIOS E SANITY CHECK (Igual em todos os processos)
+    // 5. CÁLCULO DAS CARGAS
     for (int i = 0; i < todosDispositivos; ++i) {
-        // Média por iteração
-        double mediaSegundos = ticks[i] / (double)precision;
-
-        // --- FILTRO DE VALORES INVÁLIDOS (Clamp) ---
-        // Se for muito pequeno (quase zero ou negativo), fixa num mínimo (1 nanossegundo)
-        if (mediaSegundos < 1.0e-9) mediaSegundos = 1.0e-9;
+        // O vetor 'ticks' contém o tempo TOTAL da bateria de testes.
+        // A média por iteração é ticks / precision.
+        tempos[i] = ticks[i] / (double)precision;
         
-        // Se for absurdamente grande (ex: > 1000 segundos por iteração, ou lixo 1e35), 
-        // limita a um valor alto mas "real" para não quebrar a matemática.
-        if (mediaSegundos > 1000.0) mediaSegundos = 1000.0;
-
-        tempos[i] = mediaSegundos;
+        // Sanity Check
+        if (tempos[i] < 1.0e-9) tempos[i] = 1.0e-9;
     }
 
-    // 6) CÁLCULO DAS CARGAS (Agora seguro pois tempos[] está limpo e sincronizado)
+    // Calcula as novas cargas ideais com base nos tempos médios
     ComputarCargas(tempos, cargasAntigas, cargasNovas, todosDispositivos);
-
-    // Opcional: Print de Debug apenas no Rank 0 com precisão controlada
-    
-    if (world_rank == 0) {
-        std::cout << "--- Tempos Medidos (s) ---" << std::endl;
-        std::cout << std::fixed << std::setprecision(5); // Limita visualização a 5 casas
-        for(int i=0; i<todosDispositivos; i++) {
-            std::cout << "Dev " << i << ": " << tempos[i] << " s | Carga: " << cargasNovas[i] << std::endl;
-        }
-        std::cout.unsetf(std::ios_base::floatfield); // Reseta formatação
-    }
-    
 }
 
-
-
-void OpenCLWrapper::LoadBalancing()
-{
-    // --- ETAPA 1: Medição e Decisão ---
-    PrecisaoBalanceamento();
+// void OpenCLWrapper::LoadBalancing()
+// {
+//     // --- ETAPA 1: Medição e Decisão ---
     
-    // Coleta overheads para refinar o modelo de custo (opcional, mas mantido da sua estrutura)
-    CollectOverheads(); 
+//     // 1.1 Mede o desempenho atual e calcula 'cargasNovas' (Ideal)
+//     PrecisaoBalanceamento();
+    
+//     // (Opcional) Coleta overheads se necessário para outros modelos
+//     // CollectOverheads(); 
 
-    // Verificação de sanidade dos tempos medidos
-    bool temposValidos = true;
+//     // 1.2 Verificação de Sanidade dos Tempos (Evita bugs numéricos)
+//     bool temposValidos = true;
+//     for (int i = 0; i < todosDispositivos; ++i) {
+//         if (std::isnan(tempos[i]) || std::isinf(tempos[i]) || tempos[i] > 1e15) {
+//             temposValidos = false;
+//         }
+//     }
+//     if (!temposValidos) {
+//         if (world_rank == 0) std::cerr << "[LB] Aviso: Tempos inválidos detectados. Cancelando balanceamento." << std::endl;
+//         return;
+//     }
+
+//     // 1.3 CÁLCULO DA NORMA E VERIFICAÇÃO DO THRESHOLD
+//     // Calcula o quanto as cargas ideais (Novas) diferem das atuais (Antigas)
+//     float threshold = 0.000025f; 
+//     float norma = ComputarNorma(cargasAntigas, cargasNovas, todosDispositivos);
+
+//     // Se a mudança for muito pequena, não vale a pena pagar o custo de mover dados.
+//     if (norma <= threshold) {
+//         if (world_rank == 0) {
+//             // Comentado para não poluir o log, descomente se quiser ver
+//             std::cout << "[LB] Estável. Norma (" << norma << ") <= Threshold. Ignorando." << std::endl;
+//         }
+//         return; // <--- PONTO DE SAÍDA ANTECIPADA: Mantém tudo como está.
+//     }
+
+//     if (world_rank == 0) {
+//         std::cout << "[LB] Rebalanceando... Norma (" << norma << ") > Threshold." << std::endl;
+//     }
+
+//     // --- ETAPA 2: Calcular Novo Layout (Se passou do threshold) ---
+    
+//     int* novosOffsets = new int[todosDispositivos + 1];
+//     int* novosLengths = new int[todosDispositivos];
+
+//     novosOffsets[0] = 0;
+//     for (int i = 0; i < todosDispositivos; i++) {
+//         // Calcula o fim da partição baseado na carga acumulada 'cargasNovas'
+//         int fim = static_cast<int>(round(cargasNovas[i] * static_cast<float>(nElements)));
+        
+//         // O último sempre termina em nElements para fechar a conta
+//         if (i == todosDispositivos - 1) fim = nElements;
+        
+//         novosOffsets[i + 1] = fim;
+//         novosLengths[i] = novosOffsets[i + 1] - novosOffsets[i];
+//     }
+
+//     // --- ETAPA 3: Redistribuição via Interseção (Mover Dados) ---
+    
+//     size_t bytesTotal = (size_t)nElements * unitsPerElement * elementSize;
+//     char* auxData = new char[bytesTotal]; 
+
+//     // Buffers que precisam ser atualizados (Ping e Pong)
+//     std::vector<int> buffersParaAtualizar;
+//     buffersParaAtualizar.push_back(balancingTargetID);
+//     if (enableSwapBuffer) buffersParaAtualizar.push_back(swapBufferID);
+
+//     // Itera sobre todas as combinações (Origem -> Destino)
+//     for (int src = 0; src < todosDispositivos; ++src) {
+//         for (int dst = 0; dst < todosDispositivos; ++dst) {
+            
+//             int intersecaoOffset, intersecaoLength;
+//             bool haIntersecao = ComputarIntersecao(
+//                 offset[src], length[src],             // Layout Antigo
+//                 novosOffsets[dst], novosLengths[dst], // Layout Novo
+//                 &intersecaoOffset, &intersecaoLength
+//             );
+
+//             if (haIntersecao && intersecaoLength > 0) {
+                
+//                 int rankSrc = RecuperarPosicaoHistograma(dispositivosWorld, world_size, src);
+//                 int rankDst = RecuperarPosicaoHistograma(dispositivosWorld, world_size, dst);
+                
+//                 size_t byteOffset = (size_t)intersecaoOffset * unitsPerElement * elementSize;
+//                 size_t byteLength = (size_t)intersecaoLength * unitsPerElement * elementSize;
+
+//                 for (int memObjID : buffersParaAtualizar) {
+//                     int idSrc = GetDeviceMemoryObjectID(memObjID, src);
+//                     int idDst = GetDeviceMemoryObjectID(memObjID, dst);
+
+//                     // A: Cópia Local (Mesmo Rank)
+//                     if (rankSrc == world_rank && rankDst == world_rank) {
+//                         if (src != dst) {
+//                             int localSrc = src - meusDispositivosOffset;
+//                             int localDst = dst - meusDispositivosOffset;
+                            
+//                             ReadFromMemoryObject(localSrc, idSrc, auxData, (int)byteOffset, (int)byteLength);
+//                             SynchronizeCommandQueue(localSrc);
+                            
+//                             WriteToMemoryObject(localDst, idDst, auxData, (int)byteOffset, (int)byteLength);
+//                             SynchronizeCommandQueue(localDst);
+//                         }
+//                     }
+//                     // B: Envio (Sou Origem)
+//                     else if (world_rank == rankSrc) {
+//                         int localSrc = src - meusDispositivosOffset;
+//                         ReadFromMemoryObject(localSrc, idSrc, auxData, (int)byteOffset, (int)byteLength);
+//                         SynchronizeCommandQueue(localSrc);
+                        
+//                         int tag = 5000 + (src * todosDispositivos + dst); 
+//                         MPI_Send(auxData, (int)byteLength, MPI_BYTE, rankDst, tag, MPI_COMM_WORLD);
+//                     }
+//                     // C: Recebimento (Sou Destino)
+//                     else if (world_rank == rankDst) {
+//                         int localDst = dst - meusDispositivosOffset;
+//                         int tag = 5000 + (src * todosDispositivos + dst);
+                        
+//                         MPI_Recv(auxData, (int)byteLength, MPI_BYTE, rankSrc, tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                        
+//                         WriteToMemoryObject(localDst, idDst, auxData, (int)byteOffset, (int)byteLength);
+//                         SynchronizeCommandQueue(localDst);
+//                     }
+//                 }
+//             }
+//         }
+//     }
+
+//     // --- ETAPA 4: Atualizar Estado da Classe ---
+//     // Só atualizamos 'cargasAntigas', 'offset' e 'length' SE o rebalanceamento ocorreu
+//     memcpy(this->offset, novosOffsets, todosDispositivos * sizeof(int));
+//     memcpy(this->length, novosLengths, todosDispositivos * sizeof(int));
+//     memcpy(this->cargasAntigas, this->cargasNovas, todosDispositivos * sizeof(float));
+
+//     delete[] novosOffsets;
+//     delete[] novosLengths;
+//     delete[] auxData;
+
+//     MPI_Barrier(MPI_COMM_WORLD);
+// }
+
+
+void OpenCLWrapper::Probing()
+{
+    if (world_rank == 0) std::cout << "[Probing] Iniciando balanceamento inicial..." << std::endl;
+
+    // 1. MEDIÇÃO INTENSIVA (Executa kernel 'precision' vezes)
+    PrecisaoBalanceamento(); 
+    
+    // (Opcional) Coleta overheads
+    // CollectOverheads(); 
+
+    // Verificação de Sanidade
     for (int i = 0; i < todosDispositivos; ++i) {
         if (std::isnan(tempos[i]) || std::isinf(tempos[i]) || tempos[i] > 1e15) {
-            std::cout<<"Tempo inválido no dispositivo "<<i<<" com valor de "<<tempos[i]<<" segundos "<<std::endl;
-            temposValidos = false;
+             if (world_rank == 0) std::cerr << "[Probing] Erro: Tempos inválidos." << std::endl;
+             return;
         }
     }
-    if (!temposValidos) {
-        if (world_rank == 0) std::cerr << "[LB] Aviso: Tempos inválidos. Ignorando balanceamento." << std::endl;
-        return;
-    }
 
-    // --- ETAPA 2: Pré-calcular o NOVO Layout (Em Elementos) ---
-    // Isso resolve o problema de offsets inconsistentes ou lengths iguais.
-    
+    // 2. CÁLCULO DO NOVO LAYOUT
     int* novosOffsets = new int[todosDispositivos + 1];
     int* novosLengths = new int[todosDispositivos];
-
     novosOffsets[0] = 0;
     for (int i = 0; i < todosDispositivos; i++) {
-        // Calcula o fim da partição baseado na carga acumulada
         int fim = static_cast<int>(round(cargasNovas[i] * static_cast<float>(nElements)));
-        
-        // O último sempre termina em nElements
         if (i == todosDispositivos - 1) fim = nElements;
-        
         novosOffsets[i + 1] = fim;
         novosLengths[i] = novosOffsets[i + 1] - novosOffsets[i];
     }
 
-    // --- ETAPA 3: Redistribuição via Interseção (Estilo Comms) ---
-    // Aloca buffer auxiliar
+    // 3. REDISTRIBUIÇÃO (Lógica Eficiente de Interseção)
     size_t bytesTotal = (size_t)nElements * unitsPerElement * elementSize;
     char* auxData = new char[bytesTotal]; 
-
-    // Lista de buffers para atualizar (Target + Swap se habilitado)
     std::vector<int> buffersParaAtualizar;
     buffersParaAtualizar.push_back(balancingTargetID);
     if (enableSwapBuffer) buffersParaAtualizar.push_back(swapBufferID);
 
-    // Loop Duplo: Itera sobre todas as combinações de Origem (src) e Destino (dst)
-    // src = Índice do dispositivo no Layout ANTIGO (quem tem os dados agora)
-    // dst = Índice do dispositivo no Layout NOVO (quem vai receber os dados)
     for (int src = 0; src < todosDispositivos; ++src) {
         for (int dst = 0; dst < todosDispositivos; ++dst) {
-            
-            // 1. Calcula a Interseção entre o bloco ANTIGO de 'src' e o NOVO bloco de 'dst'
-            //    Isso nos diz exatamente quais elementos precisam ir de 'src' para 'dst'
             int intersecaoOffset, intersecaoLength;
-            bool haIntersecao = ComputarIntersecao(
-                offset[src], length[src],           // Antigo
-                novosOffsets[dst], novosLengths[dst], // Novo
-                &intersecaoOffset, &intersecaoLength
-            );
+            bool haIntersecao = ComputarIntersecao(offset[src], length[src], novosOffsets[dst], novosLengths[dst], &intersecaoOffset, &intersecaoLength);
 
             if (haIntersecao && intersecaoLength > 0) {
-                
-                // Descobre quem são os processos donos
                 int rankSrc = RecuperarPosicaoHistograma(dispositivosWorld, world_size, src);
                 int rankDst = RecuperarPosicaoHistograma(dispositivosWorld, world_size, dst);
-                
-                // Conversão para BYTES apenas para as chamadas de API
                 size_t byteOffset = (size_t)intersecaoOffset * unitsPerElement * elementSize;
                 size_t byteLength = (size_t)intersecaoLength * unitsPerElement * elementSize;
 
-                // Para cada buffer OpenCL (Ping/Pong)
                 for (int memObjID : buffersParaAtualizar) {
-                    
                     int idSrc = GetDeviceMemoryObjectID(memObjID, src);
                     int idDst = GetDeviceMemoryObjectID(memObjID, dst);
 
-                    // Lógica baseada na função Comms:
-                    
-                    // CASO A: Mesma máquina (Intra-rank copy)
                     if (rankSrc == world_rank && rankDst == world_rank) {
-                        // Só copia se mudou de dispositivo (se src == dst, o dado já está lá)
                         if (src != dst) {
                             int localSrc = src - meusDispositivosOffset;
                             int localDst = dst - meusDispositivosOffset;
-                            
-                            // Lê do antigo
                             ReadFromMemoryObject(localSrc, idSrc, auxData, (int)byteOffset, (int)byteLength);
                             SynchronizeCommandQueue(localSrc);
-                            
-                            // Escreve no novo
                             WriteToMemoryObject(localDst, idDst, auxData, (int)byteOffset, (int)byteLength);
                             SynchronizeCommandQueue(localDst);
                         }
-                    }
-                    // CASO B: Eu sou a ORIGEM (Envio)
-                    else if (world_rank == rankSrc) {
+                    } else if (world_rank == rankSrc) {
                         int localSrc = src - meusDispositivosOffset;
-                        
-                        // 1. Ler do Device
                         ReadFromMemoryObject(localSrc, idSrc, auxData, (int)byteOffset, (int)byteLength);
                         SynchronizeCommandQueue(localSrc);
-                        
-                        // 2. Enviar MPI
-                        // Tag única para evitar mistura: (src * total + dst)
                         int tag = 5000 + (src * todosDispositivos + dst); 
                         MPI_Send(auxData, (int)byteLength, MPI_BYTE, rankDst, tag, MPI_COMM_WORLD);
-                    }
-                    // CASO C: Eu sou o DESTINO (Recebo)
-                    else if (world_rank == rankDst) {
+                    } else if (world_rank == rankDst) {
                         int localDst = dst - meusDispositivosOffset;
-                        
-                        // 1. Receber MPI
                         int tag = 5000 + (src * todosDispositivos + dst);
                         MPI_Recv(auxData, (int)byteLength, MPI_BYTE, rankSrc, tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-                        
-                        // 2. Escrever no Device
                         WriteToMemoryObject(localDst, idDst, auxData, (int)byteOffset, (int)byteLength);
                         SynchronizeCommandQueue(localDst);
                     }
@@ -961,8 +1240,7 @@ void OpenCLWrapper::LoadBalancing()
         }
     }
 
-    // --- ETAPA 4: Atualizar Estado ---
-    // Atualiza os vetores da classe com os novos valores calculados
+    // 4. ATUALIZAÇÃO
     memcpy(this->offset, novosOffsets, todosDispositivos * sizeof(int));
     memcpy(this->length, novosLengths, todosDispositivos * sizeof(int));
     memcpy(this->cargasAntigas, this->cargasNovas, todosDispositivos * sizeof(float));
@@ -971,9 +1249,145 @@ void OpenCLWrapper::LoadBalancing()
     delete[] novosLengths;
     delete[] auxData;
 
-    // Sincronização final
     MPI_Barrier(MPI_COMM_WORLD);
+    
+    // PREPARAÇÃO PARA O FUTURO
+    firstLoadBalancing = false; // Probing feito!
+    captureStartEvent = true;   // Começar a monitorar execução real agora
 }
+
+
+void OpenCLWrapper::LoadBalancing()
+{
+    // --- DECISÃO: É a primeira vez? ---
+    if (firstLoadBalancing) {
+        Probing(); // Chama a versão pesada (benchmark)
+        return;
+    }
+
+    // --- MODO LEVE: Usar eventos da execução real ---
+    
+    // 1. Calcular Tempos Reais (Sem rodar kernels extras)
+    std::fill(ticks, ticks + todosDispositivos, 0.0);
+    std::fill(tempos, tempos + todosDispositivos, 0.0);
+
+    for (int count = 0; count < todosDispositivos; ++count) {
+        if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength) {
+            
+            // Calcula tempo entre o Start (início do ciclo) e End (fim do ciclo atual)
+            double totalSeconds = GetEventTaskTicks(startEvents[count], endEvents[count]);
+            
+            // Se o dispositivo não tem elementos, tempo é quase zero
+            if (length[count] == 0) totalSeconds = 1.0e-9;
+            
+            ticks[count] = totalSeconds;
+        }
+    }
+
+    // Sincronização Global dos Ticks Reais
+    double *ticksGlobal = new double[todosDispositivos];
+    MPI_Allreduce(ticks, ticksGlobal, todosDispositivos, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+    std::copy(ticksGlobal, ticksGlobal + todosDispositivos, ticks);
+    delete[] ticksGlobal;
+
+    // Converte para tempos e Cargas
+    for (int i = 0; i < todosDispositivos; ++i) {
+        double t = ticks[i];
+        if (t < 1.0e-9) t = 1.0e-9;
+        tempos[i] = t;
+    }
+
+    ComputarCargas(tempos, cargasAntigas, cargasNovas, todosDispositivos);
+
+    // 2. Verificar Threshold
+    float threshold = 0.000025f; 
+    float norma = ComputarNorma(cargasAntigas, cargasNovas, todosDispositivos);
+
+    if (norma <= threshold) {
+        // Se não precisar balancear, apenas rearmamos o gatilho para medir o próximo intervalo
+        captureStartEvent = true;
+        return;
+    }
+
+    if (world_rank == 0) {
+        std::cout << "[LB] Rebalanceando... Norma (" << norma << ") > Threshold." << std::endl;
+    }
+
+    // 3. Redistribuição (Código duplicado do Probing para garantir isolamento)
+    // Nota: Poderia ser uma função separada 'Redistribute()', mas aqui está inline conforme pedido
+    int* novosOffsets = new int[todosDispositivos + 1];
+    int* novosLengths = new int[todosDispositivos];
+    novosOffsets[0] = 0;
+    for (int i = 0; i < todosDispositivos; i++) {
+        int fim = static_cast<int>(round(cargasNovas[i] * static_cast<float>(nElements)));
+        if (i == todosDispositivos - 1) fim = nElements;
+        novosOffsets[i + 1] = fim;
+        novosLengths[i] = novosOffsets[i + 1] - novosOffsets[i];
+    }
+
+    size_t bytesTotal = (size_t)nElements * unitsPerElement * elementSize;
+    char* auxData = new char[bytesTotal]; 
+    std::vector<int> buffersParaAtualizar;
+    buffersParaAtualizar.push_back(balancingTargetID);
+    if (enableSwapBuffer) buffersParaAtualizar.push_back(swapBufferID);
+
+    for (int src = 0; src < todosDispositivos; ++src) {
+        for (int dst = 0; dst < todosDispositivos; ++dst) {
+            int intersecaoOffset, intersecaoLength;
+            bool haIntersecao = ComputarIntersecao(offset[src], length[src], novosOffsets[dst], novosLengths[dst], &intersecaoOffset, &intersecaoLength);
+
+            if (haIntersecao && intersecaoLength > 0) {
+                int rankSrc = RecuperarPosicaoHistograma(dispositivosWorld, world_size, src);
+                int rankDst = RecuperarPosicaoHistograma(dispositivosWorld, world_size, dst);
+                size_t byteOffset = (size_t)intersecaoOffset * unitsPerElement * elementSize;
+                size_t byteLength = (size_t)intersecaoLength * unitsPerElement * elementSize;
+
+                for (int memObjID : buffersParaAtualizar) {
+                    int idSrc = GetDeviceMemoryObjectID(memObjID, src);
+                    int idDst = GetDeviceMemoryObjectID(memObjID, dst);
+
+                    if (rankSrc == world_rank && rankDst == world_rank) {
+                        if (src != dst) {
+                            int localSrc = src - meusDispositivosOffset;
+                            int localDst = dst - meusDispositivosOffset;
+                            ReadFromMemoryObject(localSrc, idSrc, auxData, (int)byteOffset, (int)byteLength);
+                            SynchronizeCommandQueue(localSrc);
+                            WriteToMemoryObject(localDst, idDst, auxData, (int)byteOffset, (int)byteLength);
+                            SynchronizeCommandQueue(localDst);
+                        }
+                    } else if (world_rank == rankSrc) {
+                        int localSrc = src - meusDispositivosOffset;
+                        ReadFromMemoryObject(localSrc, idSrc, auxData, (int)byteOffset, (int)byteLength);
+                        SynchronizeCommandQueue(localSrc);
+                        int tag = 5000 + (src * todosDispositivos + dst); 
+                        MPI_Send(auxData, (int)byteLength, MPI_BYTE, rankDst, tag, MPI_COMM_WORLD);
+                    } else if (world_rank == rankDst) {
+                        int localDst = dst - meusDispositivosOffset;
+                        int tag = 5000 + (src * todosDispositivos + dst);
+                        MPI_Recv(auxData, (int)byteLength, MPI_BYTE, rankSrc, tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                        WriteToMemoryObject(localDst, idDst, auxData, (int)byteOffset, (int)byteLength);
+                        SynchronizeCommandQueue(localDst);
+                    }
+                }
+            }
+        }
+    }
+
+    memcpy(this->offset, novosOffsets, todosDispositivos * sizeof(int));
+    memcpy(this->length, novosLengths, todosDispositivos * sizeof(int));
+    memcpy(this->cargasAntigas, this->cargasNovas, todosDispositivos * sizeof(float));
+
+    delete[] novosOffsets;
+    delete[] novosLengths;
+    delete[] auxData;
+
+    MPI_Barrier(MPI_COMM_WORLD);
+    
+    // IMPORTANTE: Habilita captura para o próximo ciclo de medição
+    captureStartEvent = true; 
+}
+
+
 
 
 // void OpenCLWrapper::ComputarCargas(const double *ticks, const float *cargasAntigas, float *cargasNovas, int participantes) {
@@ -1156,26 +1570,44 @@ long int OpenCLWrapper::GetEventTaskOverheadTicks(int devicePosition, int eventP
 }
 
 
-double OpenCLWrapper::GetEventTaskTicks(int devicePosition, int startEventPosition, int endEventPosition)
-{
+// double OpenCLWrapper::GetEventTaskTicks(int devicePosition, int startEventPosition, int endEventPosition)
+// {
+//     cl_ulong ticksStart = 0;
+//     cl_ulong ticksEnd = 0;
+
+//     // Obtém timestamps brutos (nanossegundos)
+//     cl_int err1 = clGetEventProfilingInfo(devices[devicePosition].events[startEventPosition], CL_PROFILING_COMMAND_START, sizeof(cl_ulong), &ticksStart, NULL);
+//     cl_int err2 = clGetEventProfilingInfo(devices[devicePosition].events[endEventPosition], CL_PROFILING_COMMAND_END, sizeof(cl_ulong), &ticksEnd, NULL);
+
+//     if (err1 != CL_SUCCESS || err2 != CL_SUCCESS) {
+//         // Se falhar em pegar o evento, retorna 0 para não quebrar o cálculo com lixo
+//         return 0.0;
+//     }
+
+//     // Proteção contra Underflow (se start > end por erro de driver)
+//     if (ticksEnd < ticksStart) return 0.000001; 
+
+//     // Converte Nanossegundos -> Segundos
+//     return (double)(ticksEnd - ticksStart) * 1.0e-9;
+// }
+
+
+
+double OpenCLWrapper::GetEventTaskTicks(cl_event startEvent, cl_event endEvent) {
+    if (startEvent == NULL || endEvent == NULL) return 0.0;
+
     cl_ulong ticksStart = 0;
     cl_ulong ticksEnd = 0;
 
-    // Obtém timestamps brutos (nanossegundos)
-    cl_int err1 = clGetEventProfilingInfo(devices[devicePosition].events[startEventPosition], CL_PROFILING_COMMAND_START, sizeof(cl_ulong), &ticksStart, NULL);
-    cl_int err2 = clGetEventProfilingInfo(devices[devicePosition].events[endEventPosition], CL_PROFILING_COMMAND_END, sizeof(cl_ulong), &ticksEnd, NULL);
+    cl_int err1 = clGetEventProfilingInfo(startEvent, CL_PROFILING_COMMAND_START, sizeof(cl_ulong), &ticksStart, NULL);
+    cl_int err2 = clGetEventProfilingInfo(endEvent, CL_PROFILING_COMMAND_END, sizeof(cl_ulong), &ticksEnd, NULL);
 
-    if (err1 != CL_SUCCESS || err2 != CL_SUCCESS) {
-        // Se falhar em pegar o evento, retorna 0 para não quebrar o cálculo com lixo
-        return 0.0;
-    }
+    if (err1 != CL_SUCCESS || err2 != CL_SUCCESS) return 0.0;
+    if (ticksEnd < ticksStart) return 1.0e-9; // Proteção
 
-    // Proteção contra Underflow (se start > end por erro de driver)
-    if (ticksEnd < ticksStart) return 0.000001; 
-
-    // Converte Nanossegundos -> Segundos
-    return (double)(ticksEnd - ticksStart) * 1.0e-9;
+    return (double)(ticksEnd - ticksStart) * 1.0e-9; // Retorna Segundos
 }
+
 
 cl_device_type OpenCLWrapper::GetDeviceType() {
     return devices[deviceIndex].deviceType;
