@@ -715,91 +715,120 @@ void OpenCLWrapper::Probing()
 
 
 
-void OpenCLWrapper::PrecisaoBalanceamento() {
-    // 1) Zera o array de ticks
-    for(int i=0; i<todosDispositivos; i++) ticks[i] = 0.0;
+#include <iomanip> // Necessário para std::fixed e std::setprecision
 
+void OpenCLWrapper::PrecisaoBalanceamento() {
+    // 1) INICIALIZAÇÃO LIMPA (Evita lixo de memória)
+    // Zera os vetores locais antes de começar
+    std::fill(ticks, ticks + todosDispositivos, 0.0);
+    std::fill(tempos, tempos + todosDispositivos, 0.0);
+    
+    // Arrays auxiliares para índices de eventos
     int *startEventIdx = new int[meusDispositivosLength];
     int *endEventIdx = new int[meusDispositivosLength];
 
-    // Limpa a fila para garantir índices consistentes
+    // Limpa a fila de comandos para garantir que não haja eventos pendentes
     for (int i = 0; i < meusDispositivosLength; i++) {
         SynchronizeCommandQueue(i);
     }
 
-    // 2) Executa 'precision' rodadas
+    // 2) MEDIÇÃO (Loop de precisão)
     for (int iter = 0; iter < precision; ++iter) {
         
         for (int count = 0; count < todosDispositivos; ++count) {
+            // Apenas executa nos meus dispositivos
             if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength) {
                 int localIdx = count - meusDispositivosOffset;
                 
-                int evtIndex = RunKernel(
-                    localIdx,
-                    kernelDispositivo[count],
-                    offset[count],
-                    length[count],
-                    isDeviceCPU(localIdx) ? 8 : 256
-                );
+                // Só executa se tiver trabalho (length > 0) para evitar erros do OpenCL
+                if (length[count] > 0) {
+                    int evtIndex = RunKernel(
+                        localIdx,
+                        kernelDispositivo[count],
+                        offset[count],
+                        length[count],
+                        isDeviceCPU(localIdx) ? 8 : 256
+                    );
 
-                // Marca o primeiro evento da série
-                if (iter == 0) {
-                    startEventIdx[localIdx] = evtIndex;
+                    // Captura o primeiro evento
+                    if (iter == 0) {
+                        startEventIdx[localIdx] = evtIndex;
+                    }
+                    // Atualiza o último evento
+                    endEventIdx[localIdx] = evtIndex;
                 }
-                // Atualiza o último evento
-                endEventIdx[localIdx] = evtIndex;
             }
         }
     }
 
-    // 3) Sincroniza e calcula o tempo total em Segundos
+    // 3) LEITURA LOCAL DOS TEMPOS
     for (int count = 0; count < todosDispositivos; ++count) {
         if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength) {
             int localIdx = count - meusDispositivosOffset;
             
-            clFinish(devices[localIdx].kernelCommandQueue);
+            if (length[count] > 0) {
+                clFinish(devices[localIdx].kernelCommandQueue);
 
-            double totalSeconds = GetEventTaskTicks(localIdx, startEventIdx[localIdx], endEventIdx[localIdx]);
-            
-            // Proteção contra valores negativos ou zero (bug de driver ou clock)
-            if (totalSeconds < 1.0e-9) totalSeconds = 1.0e-9; 
-            
-            ticks[count] = totalSeconds;
-
-            devices[localIdx].numberOfEvents = 0;
+                // Obtém o tempo total da bateria de testes em SEGUNDOS
+                double totalSeconds = GetEventTaskTicks(localIdx, startEventIdx[localIdx], endEventIdx[localIdx]);
+                
+                ticks[count] = totalSeconds;
+                
+                // Reset de eventos
+                devices[localIdx].numberOfEvents = 0;
+            } else {
+                // Se o dispositivo não rodou nada (carga 0), definimos um tempo muito pequeno mas não zero
+                // para evitar divisão por zero na ComputarCargas.
+                ticks[count] = 0.000001; 
+            }
         }
     }
 
     delete[] startEventIdx;
     delete[] endEventIdx;
 
-    // 4) Reduz ticks entre ranks usando MPI_DOUBLE
-    double *ticksRoot = (double*) malloc(sizeof(double) * todosDispositivos);
-    MPI_Allreduce(ticks, ticksRoot, todosDispositivos, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+    // 4) SINCRONIZAÇÃO GLOBAL (Evita que outros processos tenham lixo)
+    // Usamos um buffer temporário para garantir que o Allreduce funcione corretamente
+    double *ticksGlobal = new double[todosDispositivos];
     
+    // Soma os tempos de todos os processos. Como cada processo só preencheu seus devices (e zerou os outros),
+    // a soma resultará no vetor completo correto em TODOS os processos.
+    MPI_Allreduce(ticks, ticksGlobal, todosDispositivos, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+    
+    // Atualiza o vetor ticks da classe com os dados globais
+    std::copy(ticksGlobal, ticksGlobal + todosDispositivos, ticks);
+    delete[] ticksGlobal;
+
+    // 5) CÁLCULO DE TEMPOS MÉDIOS E SANITY CHECK (Igual em todos os processos)
     for (int i = 0; i < todosDispositivos; ++i) {
-        ticks[i] = ticksRoot[i];
+        // Média por iteração
+        double mediaSegundos = ticks[i] / (double)precision;
+
+        // --- FILTRO DE VALORES INVÁLIDOS (Clamp) ---
+        // Se for muito pequeno (quase zero ou negativo), fixa num mínimo (1 nanossegundo)
+        if (mediaSegundos < 1.0e-9) mediaSegundos = 1.0e-9;
+        
+        // Se for absurdamente grande (ex: > 1000 segundos por iteração, ou lixo 1e35), 
+        // limita a um valor alto mas "real" para não quebrar a matemática.
+        if (mediaSegundos > 1000.0) mediaSegundos = 1000.0;
+
+        tempos[i] = mediaSegundos;
     }
-    free(ticksRoot);
 
-    // 5) Recalcula cargas
-    ComputarCargas(ticks, cargasAntigas, cargasNovas, todosDispositivos);
+    // 6) CÁLCULO DAS CARGAS (Agora seguro pois tempos[] está limpo e sincronizado)
+    ComputarCargas(tempos, cargasAntigas, cargasNovas, todosDispositivos);
 
-    // 6) Atualiza vetor de tempos (Segundos médios por iteração)
-    for (int count = 0; count < todosDispositivos; ++count) {
-        if (count >= meusDispositivosOffset && count < meusDispositivosOffset + meusDispositivosLength) {
-            // Ticks já é o total em segundos. Dividimos por precision para ter a média.
-            tempos[count] = ticks[count] / (double)precision;
-        } else {
-            tempos[count] = 0.0f;
+    // Opcional: Print de Debug apenas no Rank 0 com precisão controlada
+    
+    if (world_rank == 0) {
+        std::cout << "--- Tempos Medidos (s) ---" << std::endl;
+        std::cout << std::fixed << std::setprecision(5); // Limita visualização a 5 casas
+        for(int i=0; i<todosDispositivos; i++) {
+            std::cout << "Dev " << i << ": " << tempos[i] << " s | Carga: " << cargasNovas[i] << std::endl;
         }
+        std::cout.unsetf(std::ios_base::floatfield); // Reseta formatação
     }
     
-    // Sincroniza tempos para debug/logs
-    float *temposRoot = (float*) malloc(sizeof(float) * todosDispositivos);
-    MPI_Allreduce(tempos, temposRoot, todosDispositivos, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
-    for (int i = 0; i < todosDispositivos; ++i) tempos[i] = temposRoot[i];
-    free(temposRoot);
 }
 
 
@@ -947,22 +976,57 @@ void OpenCLWrapper::LoadBalancing()
 }
 
 
-void OpenCLWrapper::ComputarCargas(const double *ticks, const float *cargasAntigas, float *cargasNovas, int participantes) {
-    if (participantes == 1) {
+// void OpenCLWrapper::ComputarCargas(const double *ticks, const float *cargasAntigas, float *cargasNovas, int participantes) {
+//     if (participantes == 1) {
+//         cargasNovas[0] = 1.0f;
+//         return;
+//     }
+
+//     float cargaTotal = 0.0f;
+//     for (int count = 0; count < participantes; count++) {
+//         cargaTotal += ((count == 0) ? (cargasAntigas[count] - 0.0f) : (cargasAntigas[count] - cargasAntigas[count - 1])) * ((count == 0) ? 1.0f : static_cast<float>(ticks[0]) / static_cast<float>(ticks[count]));
+//     }
+
+//     for (int count = 0; count < participantes; count++) {
+//         float cargaNova = (((count == 0) ? (cargasAntigas[count] - 0.0f) : (cargasAntigas[count] - cargasAntigas[count - 1])) * ((count == 0) ? 1.0f : static_cast<float>(ticks[0]) / static_cast<float>(ticks[count]))) / cargaTotal;
+//         cargasNovas[count] = ((count == 0) ? cargaNova : cargasNovas[count - 1] + cargaNova);
+//     }
+// }
+
+
+void OpenCLWrapper::ComputarCargas(const double *temposMedidos, const float *cargasAntigas, float *cargasNovas, int participantes) {
+    if (participantes <= 1) {
         cargasNovas[0] = 1.0f;
         return;
     }
 
-    float cargaTotal = 0.0f;
-    for (int count = 0; count < participantes; count++) {
-        cargaTotal += ((count == 0) ? (cargasAntigas[count] - 0.0f) : (cargasAntigas[count] - cargasAntigas[count - 1])) * ((count == 0) ? 1.0f : static_cast<float>(ticks[0]) / static_cast<float>(ticks[count]));
+    // Usamos double para o cálculo intermediário para máxima precisão
+    double *capacidade = new double[participantes];
+    double capacidadeTotal = 0.0;
+
+    for(int i=0; i < participantes; i++) {
+        // Capacidade é o inverso do tempo (1/t)
+        // Como já filtramos temposMedidos na função anterior (min 1e-9), não haverá divisão por zero.
+        capacidade[i] = 1.0 / temposMedidos[i];
+        capacidadeTotal += capacidade[i];
     }
 
-    for (int count = 0; count < participantes; count++) {
-        float cargaNova = (((count == 0) ? (cargasAntigas[count] - 0.0f) : (cargasAntigas[count] - cargasAntigas[count - 1])) * ((count == 0) ? 1.0f : static_cast<float>(ticks[0]) / static_cast<float>(ticks[count]))) / cargaTotal;
-        cargasNovas[count] = ((count == 0) ? cargaNova : cargasNovas[count - 1] + cargaNova);
+    double cargaAcumulada = 0.0;
+    for(int i=0; i < participantes; i++) {
+        double fatia = capacidade[i] / capacidadeTotal;
+        cargaAcumulada += fatia;
+        
+        // Atribui ao vetor de cargas (convertendo para float no final)
+        cargasNovas[i] = (float)cargaAcumulada;
     }
+    
+    // Força fechamento exato para evitar erros de ponto flutuante (0.99999...)
+    cargasNovas[participantes - 1] = 1.0f;
+
+    delete[] capacidade;
 }
+
+
 
 /*
 int OpenCLWrapper::RecuperarPosicaoHistograma(int *histograma, int tamanho, int indice) {
@@ -1097,14 +1161,19 @@ double OpenCLWrapper::GetEventTaskTicks(int devicePosition, int startEventPositi
     cl_ulong ticksStart = 0;
     cl_ulong ticksEnd = 0;
 
-    // Pega o timestamp de início do PRIMEIRO evento da bateria
-    clGetEventProfilingInfo(devices[devicePosition].events[startEventPosition], CL_PROFILING_COMMAND_START, sizeof(cl_ulong), &ticksStart, NULL);
-    
-    // Pega o timestamp de fim do ÚLTIMO evento da bateria
-    clGetEventProfilingInfo(devices[devicePosition].events[endEventPosition], CL_PROFILING_COMMAND_END, sizeof(cl_ulong), &ticksEnd, NULL);
+    // Obtém timestamps brutos (nanossegundos)
+    cl_int err1 = clGetEventProfilingInfo(devices[devicePosition].events[startEventPosition], CL_PROFILING_COMMAND_START, sizeof(cl_ulong), &ticksStart, NULL);
+    cl_int err2 = clGetEventProfilingInfo(devices[devicePosition].events[endEventPosition], CL_PROFILING_COMMAND_END, sizeof(cl_ulong), &ticksEnd, NULL);
 
-    // Converte Nanosegundos -> Segundos (1e-9)
-    // Usamos double para manter precisão
+    if (err1 != CL_SUCCESS || err2 != CL_SUCCESS) {
+        // Se falhar em pegar o evento, retorna 0 para não quebrar o cálculo com lixo
+        return 0.0;
+    }
+
+    // Proteção contra Underflow (se start > end por erro de driver)
+    if (ticksEnd < ticksStart) return 0.000001; 
+
+    // Converte Nanossegundos -> Segundos
     return (double)(ticksEnd - ticksStart) * 1.0e-9;
 }
 
