@@ -52,8 +52,7 @@ private:
     void SetKernelAttribute(int devicePosition, int kernelID, int attribute, int memoryObjectID);
     int BuildAndCreateKernels(const char *sourcePath,const char *kernelName);
     void PrecisaoBalanceamento();
-    void ComputarCargas(const long int *ticks, const float *cargasAntigas, float *cargasNovas, int participantes);
-    int RecuperarPosicaoHistograma(int *histograma, int tamanho, int indice);
+    void ComputarCargas(const double *ticks, const float *cargasAntigas, float *cargasNovas, int participantes);    int RecuperarPosicaoHistograma(int *histograma, int tamanho, int indice);
     bool ComputarIntersecao(int offset1, int length1, int offset2, int length2, int *intersecaoOffset, int *intersecaoLength);
     float ComputarDesvioPadraoPercentual(const long int *ticks, int participantes);
     float ComputarNorma(const float *cargasAntigas, const float *cargasNovas, int participantes);
@@ -124,7 +123,7 @@ private:
     long int offsetComputacao;
     long int lengthComputacao;
     int *dispositivosWorld;
-    long int *ticks;
+    double *ticks;
     double *tempos_por_carga;
     float *cargasNovas;
     float *cargasAntigas;
@@ -172,7 +171,7 @@ private:
     void SynchronizeEvent(int eventPosition);
     long int GetEventTaskOverheadTicks(int devicePosition, int eventPosition);
     // long int GetEventTaskTicks(int devicePosition, int eventPosition);
-    long int GetEventTaskTicks(int devicePosition, int startEventPosition, int endEventPosition);    
+    double GetEventTaskTicks(int devicePosition, int startEventPosition, int endEventPosition);  
     int GetDeviceMemoryObjectID(int globalMemObjID, int deviceIndex);
     cl_device_type GetDeviceType();
     int GetDeviceMaxWorkItemsPerWorkGroup();
